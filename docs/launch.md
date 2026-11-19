@@ -6,7 +6,7 @@ Deposit Kit launches as a website that installs like an app, with no app stores 
 
 The app shows the right instructions for each browser. `npm run check:launch` lists any placeholders still left.
 
-The iOS and Android store projects were removed on 2026-11-18 to keep this web-only. They're in git history at commit `babd67a` if ever wanted (`git checkout babd67a -- ios android capacitor.config.ts`).
+The iOS and Android store projects were removed on 2026-11-18 to keep this web-only. They're in git history at commit `52e1f00` if ever wanted (`git checkout 52e1f00 -- ios android capacitor.config.ts`).
 
 ## Already done
 - Production server (`server/node.ts`): serves the app and `/api/timestamp`, with security headers, per-device and total rate limits, a health check at `/api/health`, and `/privacy` and `/support` pages.
@@ -14,8 +14,8 @@ The iOS and Android store projects were removed on 2026-11-18 to keep this web-o
 - Tested with a large record: 40 photos at about 5 MB each (199 MB) saved and timestamped in about 5 s. Building the PDF (17 MB) and zip (199 MB) took under 1 s, and restoring the full zip took under 10 s, on this Mac. Phones will be slower, and older phones haven't been tested.
 
 ## 1. Details only you can provide
-- [ ] **Support email**: replace `CONTACT_EMAIL` in `public/privacy.html` and `public/support.html`.
-- [ ] **Domain**: a new one (about $10–15 a year), or free as a subdomain of a domain you already own (for example `deposit.varuntx.us`).
+- [x] **Support email**: `depositkit@varuntx.us` (Cloudflare Email Routing alias).
+- [x] **Domain**: `https://depositkit.varuntx.us` (Cloudflare Tunnel to Dokploy on the home server).
 - [ ] **Name check**: search for "Deposit Kit" (web, USPTO trademark search) before announcing it.
 - [ ] **FreeTSA terms**: read freetsa.org's terms of use for this kind of use.
 

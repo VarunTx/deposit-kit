@@ -1,5 +1,7 @@
 # Deposit Kit
 
+Live at https://depositkit.varuntx.us
+
 Free web app that helps US renters prove their rental's condition at move-in and get their security deposit back at move-out. Photos stay on the user's device.
 
 - Spec and decisions: [`docs/spec.md`](docs/spec.md)
@@ -9,6 +11,7 @@ Free web app that helps US renters prove their rental's condition at move-in and
 - Check a real timestamp end to end: `npm run verify:tsa` (calls FreeTSA, then runs `openssl ts -verify`)
 - Production server: `npm run build`, then `node server/node.ts` (or `docker build -t deposit-kit .`)
 - Launching: [`docs/launch.md`](docs/launch.md) and `npm run check:launch`
+- Deploys: pushing to `main` on GitHub redeploys through Dokploy (Dockerfile, port 8080, `TRUST_PROXY=1`)
 
 Deposit Kit provides templates and deadlines, not legal advice.
 

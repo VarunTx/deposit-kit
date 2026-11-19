@@ -19,24 +19,23 @@ The iOS and Android store projects were removed on 2026-11-18 to keep this web-o
 - [ ] **Name check**: search for "Deposit Kit" (web, USPTO trademark search) before announcing it.
 - [ ] **FreeTSA terms**: read freetsa.org's terms of use for this kind of use.
 
-## 2. Deploy (I can do this once you say go)
-Dokploy (recommended, you already run it):
-- [ ] New application from this repo, build type **Dockerfile**, port **8080**.
-- [ ] Environment: `TRUST_PROXY=1` (so rate limits see real visitor IPs behind Traefik).
-- [ ] Domain with HTTPS (Let's Encrypt in Dokploy). HTTPS is required for photo fingerprints and for installing the app.
-- [ ] Health check path: `/api/health`.
+## 2. Deploy (done 2026-11-18)
+Live at **https://depositkit.varuntx.us**, set up like the portfolio:
+- [x] GitHub: public repo `VarunTx/deposit-kit`. The Dokploy GitHub app (`Dokploy-2026-11-15-19n7uw`) has access to it.
+- [x] Dokploy: project **Deposit Kit**, application **Web app** (`deposit-kit-xoe335`), GitHub source `main`, build type Dockerfile, env `TRUST_PROXY=1`, **Autodeploy on**: every push to `main` redeploys (checked: about 6 s after a push).
+- [x] Domain in Dokploy: `depositkit.varuntx.us`, port 8080, HTTP (Cloudflare handles HTTPS).
+- [x] Cloudflare: no change needed. The existing `*.varuntx.us` DNS record and tunnel route (tunnel "Acer" to `http://localhost:80`, Traefik) already cover it. The app itself redirects `http://` to `https://` and sends HSTS.
+- [x] Email: Cloudflare Email Routing rule `depositkit@varuntx.us` to your Gmail.
 
-Or Cloudflare Pages: build command `npm run build`, output directory `dist`, then add a rate-limiting rule for `/api/timestamp` in the Cloudflare dashboard.
-
-## 3. Check on the live site
-- [ ] Desktop Chrome or Edge: install the app, open it from the dock or Start menu, and do a short move-in (drag photos into a room, save the PDF and zip).
-- [ ] Safari on Mac: File > Add to Dock works.
-- [ ] Turn off Wi-Fi after the first visit: the app still opens, and photos are saved and marked "waiting for a timestamp" until you're back online. (Offline support can't be tested in the in-app test browser, so this is its first real check.)
-- [ ] `/privacy` and `/support` load.
+## 3. Checks on the live site
+- [x] Pages, security headers, 404s, `/privacy`, `/support`, `/api/health`, a real FreeTSA timestamp through `/api/timestamp`, bad input rejected, http to https redirect.
+- [x] In desktop Chrome: service worker active and controlling the page; app and PDF code in the offline cache; a full move-in (home, room, photo, timestamp, PDF and zip) worked. The test data was deleted afterwards.
+- [ ] Desktop Chrome or Edge: click the install icon in the address bar, open the installed app, and try it with Wi-Fi off.
+- [ ] Safari on Mac: File > Add to Dock.
 - [ ] Phone (whenever you get to it): Add to Home Screen, take photos with the camera, save to Files, restore from the zip.
 
 ## Every later release
-Deploy again. Open copies of the app pick up the update on their next load; if someone is mid-save at that moment, the app shows "Deposit Kit just updated. Reload".
+Push to `main`. Dokploy rebuilds and swaps the container (the old one keeps serving until the new one passes its health check). Open copies of the app pick up the update on their next load; if someone is mid-save at that moment, the app shows "Deposit Kit just updated. Reload".
 
 ## Not built yet
 Move-out comparison, state rules, the demand letter and reminders (see `docs/spec.md`). v1 launches as move-in only.

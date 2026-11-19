@@ -72,6 +72,16 @@ export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
   return req.socket.remoteAddress ?? 'unknown'
 }
 
+/** The scheme the visitor used, from Cloudflare's CF-Visitor header (Traefik rewrites X-Forwarded-Proto). */
+export function visitorScheme(req: IncomingMessage): 'http' | 'https' | undefined {
+  const raw = req.headers['cf-visitor']
+  const v = typeof raw === 'string' ? /"scheme"\s*:\s*"(https?)"/.exec(raw)?.[1] : undefined
+  if (v === 'http' || v === 'https') return v
+  const xfp = req.headers['x-forwarded-proto']
+  const first = (Array.isArray(xfp) ? xfp[0] : xfp)?.split(',')[0]?.trim()
+  return first === 'https' ? 'https' : undefined // an "http" here may just be Traefik's own hop, so don't redirect on it
+}
+
 export const SECURITY_HEADERS: Record<string, string> = {
   'Content-Security-Policy': [
     "default-src 'self'",
@@ -150,6 +160,12 @@ export function createAppServer(opts: { staticDir?: string; trustProxy?: boolean
   const root = opts.staticDir ? resolve(opts.staticDir) : ''
   return createServer((req, res) => {
     const path = (req.url ?? '/').split('?')[0]
+    // Behind Cloudflare, send plain-http visitors to https: photo hashing and installing need it.
+    const scheme = trustProxy ? visitorScheme(req) : undefined
+    if (scheme === 'http' && req.headers.host) {
+      return void res.writeHead(301, { Location: `https://${req.headers.host}${req.url ?? '/'}`, 'Cache-Control': 'no-store' }).end()
+    }
+    if (scheme === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000')
     if (path === '/api/timestamp') return void timestamp(req, res)
     if (path === '/api/health') return void res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' }).end('ok')
     if (root && serveStatic(root, req, res)) return

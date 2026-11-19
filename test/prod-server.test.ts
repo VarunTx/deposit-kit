@@ -3,7 +3,8 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createAppServer } from '../server/node.ts'
+import { createAppServer, visitorScheme } from '../server/node.ts'
+import type { IncomingMessage } from 'node:http'
 import { RateLimiter } from '../server/rate-limit.ts'
 import { createTimestampHandler } from '../server/timestamp.ts'
 import { freetsa, tsrResponse } from './fixtures.ts'
@@ -89,5 +90,28 @@ describe('production server', () => {
     const pre = (origin: string) => fetch(`${base}/api/timestamp`, { method: 'OPTIONS', headers: { Origin: origin } })
     expect((await pre('https://partner.example')).headers.get('access-control-allow-origin')).toBe('https://partner.example')
     expect((await pre('https://evil.example')).headers.get('access-control-allow-origin')).toBeNull()
+  })
+})
+
+describe('https handling behind Cloudflare', () => {
+  const req = (headers: Record<string, string>) => ({ headers }) as unknown as IncomingMessage
+  it('reads the visitor scheme from CF-Visitor, not from a plain-http proxy hop', () => {
+    expect(visitorScheme(req({ 'cf-visitor': '{"scheme":"http"}' }))).toBe('http')
+    expect(visitorScheme(req({ 'cf-visitor': '{"scheme":"https"}', 'x-forwarded-proto': 'http' }))).toBe('https')
+    expect(visitorScheme(req({ 'x-forwarded-proto': 'http' }))).toBeUndefined()
+    expect(visitorScheme(req({}))).toBeUndefined()
+  })
+
+  it('redirects http visitors to https only when behind a trusted proxy', async () => {
+    const server = createAppServer({ trustProxy: true })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const host = `127.0.0.1:${(server.address() as AddressInfo).port}` // fetch can't override Host
+    const redirected = await fetch(`http://${host}/privacy?x=1`, { redirect: 'manual', headers: { 'CF-Visitor': '{"scheme":"http"}' } })
+    expect(redirected.status).toBe(301)
+    expect(redirected.headers.get('location')).toBe(`https://${host}/privacy?x=1`)
+    const secure = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/health`, { headers: { 'CF-Visitor': '{"scheme":"https"}' } })
+    expect(secure.status).toBe(200)
+    expect(secure.headers.get('strict-transport-security')).toContain('max-age')
+    server.close()
   })
 })

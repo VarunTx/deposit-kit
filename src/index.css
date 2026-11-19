@@ -1,17 +1,25 @@
 :root {
-  --bg: #ffffff;
-  --card: #f8fafc;
-  --line: #d9e1ea;
-  --text: #0f172a;
-  --muted: #475569;
+  --bg: #f4f7f6;
+  --bg-glow: #e3f3ef;
+  --card: #ffffff;
+  --card-2: #f7faf9;
+  --line: #dde5e3;
+  --text: #0f1f1c;
+  --muted: #546461;
   --accent: #0f766e;
+  --accent-strong: #0b5f58;
   --accent-text: #ffffff;
-  --accent-soft: #e6f4f1;
-  --warn-bg: #fff7e6;
-  --warn-line: #f2c46d;
+  --accent-soft: #e2f3ef;
+  --accent-ink: #0b5f58;
+  --warm: #f59e0b;
+  --warn-bg: #fff6e5;
+  --warn-line: #f5cf85;
   --warn-text: #7a4a00;
-  --ok-text: #0f6b45;
+  --ok-text: #0b7a52;
+  --ok-bg: #e5f6ee;
   --danger: #b42318;
+  --shadow: 0 1px 2px rgb(15 31 28 / 0.05), 0 8px 24px -12px rgb(15 31 28 / 0.18);
+  --radius: 18px;
   color-scheme: light dark;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 17px;
@@ -19,24 +27,36 @@
   color: var(--text);
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b1220;
-    --card: #111a2e;
-    --line: #26324f;
-    --text: #e6ebf2;
-    --muted: #9aa8bd;
+    --bg: #08110f;
+    --bg-glow: #0d2622;
+    --card: #101c1a;
+    --card-2: #0c1715;
+    --line: #22332f;
+    --text: #e7efed;
+    --muted: #97a9a5;
     --accent: #2dd4bf;
-    --accent-text: #04201c;
-    --accent-soft: #0f2e2c;
-    --warn-bg: #2a2110;
-    --warn-line: #7a5a1c;
-    --warn-text: #f5d38f;
+    --accent-strong: #5eead4;
+    --accent-text: #032420;
+    --accent-soft: #0f2d29;
+    --accent-ink: #7ce8d8;
+    --warn-bg: #2a2010;
+    --warn-line: #6e5220;
+    --warn-text: #f6d58e;
     --ok-text: #6ee7b7;
+    --ok-bg: #0e2a20;
     --danger: #f87171;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -14px rgb(0 0 0 / 0.7);
   }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); }
+body {
+  margin: 0;
+  background: radial-gradient(1200px 500px at 50% -200px, var(--bg-glow), transparent 70%), var(--bg);
+  background-repeat: no-repeat;
+  min-height: 100vh;
+}
 button, input, select { font: inherit; color: inherit; }

@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { Session } from '../lib/session.ts'
 import type { Photo, Property, Room } from '../lib/types.ts'
+import { useObjectUrl } from './feedback.tsx'
+import { ArrowLeft, Camera, Check, Images, RoomIcon, ShieldCheck, Trash, Wifi } from './icons.tsx'
 
-function useObjectUrl(blob: Blob | null): string | null {
-  const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => {
-    if (!blob) return setUrl(null)
-    const u = URL.createObjectURL(blob)
-    setUrl(u)
-    return () => URL.revokeObjectURL(u)
-  }, [blob])
-  return url
-}
+const TIPS = [
+  'Stand in the doorway and take one wide photo of the whole room',
+  'Walls, floors and ceiling, including corners',
+  'Windows, blinds, doors and locks',
+  'Appliances and fixtures, inside and out',
+  'Get close to anything scratched, stained, chipped or broken, and add a note',
+]
 
 export function RoomView({
   session,
@@ -58,8 +57,8 @@ export function RoomView({
         const quota = e instanceof DOMException && e.name === 'QuotaExceededError'
         setProblem(
           quota
-            ? 'Your device is out of space for photos. Save your record now, then free up space.'
-            : `Couldn’t add ${file.name || 'that file'}. Please try a photo.`,
+            ? 'Your device is out of space for photos. Save your record now, then free up some space.'
+            : `Couldn’t add ${file.name || 'that file'}. Please choose a photo.`,
         )
       } finally {
         setBusy((n) => n - 1)
@@ -67,27 +66,46 @@ export function RoomView({
     }
   }
 
-  if (!room) return <p class="muted">Loading…</p>
+  if (!room) return <div class="loading" aria-label="Loading" />
+
+  const stamped = photos.filter((p) => p.stamp.status === 'stamped').length
 
   return (
     <div class="stack">
       <button class="back" onClick={() => onBack(added)}>
-        ← All rooms
+        <ArrowLeft size={18} /> All rooms
       </button>
-      <header>
-        <h1>{room.name}</h1>
-        <p class="muted">
-          Photograph walls, floors, doors, windows and appliances. Get close to anything damaged and add a note, like “scratch on
-          floor by window”.
-        </p>
+      <header class="room-head">
+        <span class="room-icon big done">
+          <RoomIcon name={room.name} size={28} />
+        </span>
+        <div>
+          <h1>{room.name}</h1>
+          <p class="muted small">
+            {photos.length === 0
+              ? 'No photos yet'
+              : `${photos.length} photo${photos.length === 1 ? '' : 's'} · ${stamped} timestamped`}
+          </p>
+        </div>
       </header>
+
+      <details class="tips" open={photos.length === 0}>
+        <summary>What to photograph</summary>
+        <ul>
+          {TIPS.map((t) => (
+            <li key={t}>
+              <Check size={16} /> {t}
+            </li>
+          ))}
+        </ul>
+      </details>
 
       <div class="capture">
         <button class="btn primary big" onClick={() => cameraRef.current?.click()} disabled={busy > 0}>
-          <span aria-hidden="true">📷 </span>Take a photo
+          <Camera size={22} /> Take a photo
         </button>
         <button class="btn big" onClick={() => libraryRef.current?.click()} disabled={busy > 0}>
-          Choose from photos
+          <Images size={22} /> Choose from photos
         </button>
         <input
           ref={cameraRef}
@@ -111,8 +129,8 @@ export function RoomView({
         />
       </div>
       {busy > 0 && (
-        <p class="muted" role="status">
-          Saving {busy} photo{busy === 1 ? '' : 's'}…
+        <p class="saving-line" role="status">
+          <span class="spinner" aria-hidden="true" /> Saving {busy} photo{busy === 1 ? '' : 's'} to this device…
         </p>
       )}
       {problem && (
@@ -122,7 +140,10 @@ export function RoomView({
       )}
 
       {photos.length === 0 ? (
-        <p class="muted center empty">No photos in this room yet.</p>
+        <div class="empty-card">
+          <Camera size={28} />
+          <p>No photos in this room yet. Your first photo is one tap away.</p>
+        </div>
       ) : (
         <ul class="photo-list">
           {photos.map((p, i) => (
@@ -133,11 +154,11 @@ export function RoomView({
 
       <div class="room-actions">
         <button class="btn big" onClick={() => onBack(added)}>
-          Done with {room.name}
+          <Check size={20} /> Done with {room.name}
         </button>
         {photos.length > 0 && (
           <button class="btn ghost" onClick={onSave}>
-            Save my record now
+            <ShieldCheck size={18} /> Save my record now
           </button>
         )}
         <button
@@ -153,7 +174,7 @@ export function RoomView({
             }
           }}
         >
-          Delete this room
+          <Trash size={18} /> Delete this room
         </button>
       </div>
     </div>
@@ -164,11 +185,24 @@ function PhotoCard({ photo, index, session }: { photo: Photo; index: number; ses
   const url = useObjectUrl(photo.display)
   const [note, setNote] = useState(photo.note)
   const timer = useRef<number | undefined>(undefined)
+  const latest = useRef(note)
+  latest.current = note
 
   // Keep in sync if the note changed elsewhere, but don't fight the user while typing.
   useEffect(() => {
     if (timer.current === undefined) setNote(photo.note)
   }, [photo.note])
+
+  // Save a half-typed note if the card goes away before the debounce fires.
+  useEffect(
+    () => () => {
+      if (timer.current !== undefined) {
+        window.clearTimeout(timer.current)
+        session.setNote(photo.id, latest.current)
+      }
+    },
+    [session, photo.id],
+  )
 
   const save = (value: string) => {
     window.clearTimeout(timer.current)
@@ -178,11 +212,14 @@ function PhotoCard({ photo, index, session }: { photo: Photo; index: number; ses
 
   return (
     <li class="photo-card">
-      {url ? (
-        <img src={url} alt={note ? `Photo ${index}: ${note}` : `Photo ${index}`} loading="lazy" />
-      ) : (
-        <div class="no-preview">Preview not available on this device. The original is saved.</div>
-      )}
+      <div class="photo-frame">
+        {url ? (
+          <img src={url} alt={note ? `Photo ${index}: ${note}` : `Photo ${index}`} loading="lazy" />
+        ) : (
+          <div class="no-preview">Preview not available on this device. The original is saved.</div>
+        )}
+        <span class="photo-num">{index}</span>
+      </div>
       <div class="photo-body">
         <StampBadge photo={photo} onRetry={() => session.enqueueStamp(photo.id)} />
         <label class="field">
@@ -203,11 +240,12 @@ function PhotoCard({ photo, index, session }: { photo: Photo; index: number; ses
         </label>
         <button
           class="link danger"
+          aria-label={`Delete photo ${index}`}
           onClick={() => {
             if (confirm('Delete this photo from this device? This can’t be undone.')) session.deletePhoto(photo)
           }}
         >
-          Delete photo
+          <Trash size={16} /> Delete photo
         </button>
       </div>
     </li>
@@ -219,17 +257,28 @@ function StampBadge({ photo, onRetry }: { photo: Photo; onRetry: () => void }) {
   if (s.status === 'stamped') {
     return (
       <p class="badge ok">
-        ✓ Timestamped {new Date(s.genTime!).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+        <ShieldCheck size={18} />
+        <span>Timestamped {new Date(s.genTime!).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</span>
       </p>
     )
   }
-  if (s.status === 'pending') return <p class="badge">Getting timestamp…</p>
+  if (s.status === 'pending') {
+    return (
+      <p class="badge pending">
+        <span class="spinner" aria-hidden="true" />
+        <span>Saved. Getting timestamp…</span>
+      </p>
+    )
+  }
   return (
     <p class="badge warn">
-      Not yet timestamped. The photo is saved.{' '}
-      <button class="link" onClick={onRetry}>
-        Try again
-      </button>
+      <Wifi size={18} />
+      <span>
+        Saved, waiting for a timestamp.{' '}
+        <button class="link" onClick={onRetry}>
+          Try again
+        </button>
+      </span>
     </p>
   )
 }

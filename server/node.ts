@@ -3,6 +3,7 @@
 // Env: PORT (default 8787), ALLOWED_ORIGINS (comma-separated, only for cross-origin hosting)
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { pathToFileURL } from 'node:url'
 import { createTimestampHandler } from './timestamp.ts'
 
 const MAX_BODY = 1024
@@ -10,31 +11,44 @@ const MAX_BODY = 1024
 /** Adapt a web-standard handler to Node's http module. Shared with the Vite dev server. */
 export function toNodeHandler(handler: (req: Request) => Promise<Response>) {
   return async (req: IncomingMessage, res: ServerResponse) => {
-    const chunks: Buffer[] = []
-    let size = 0
-    for await (const chunk of req) {
-      size += (chunk as Buffer).length
-      if (size > MAX_BODY) {
-        res.writeHead(413, { 'Content-Type': 'application/json' }).end('{"error":"Send only a hash"}')
-        return
+    // Never let one bad request take the whole server down.
+    try {
+      const chunks: Buffer[] = []
+      let size = 0
+      for await (const chunk of req) {
+        size += (chunk as Buffer).length
+        if (size > MAX_BODY) {
+          res.writeHead(413, { 'Content-Type': 'application/json' }).end('{"error":"Send only a hash"}')
+          return
+        }
+        chunks.push(chunk as Buffer)
       }
-      chunks.push(chunk as Buffer)
+      const request = new Request(`http://localhost${req.url ?? '/'}`, {
+        method: req.method,
+        headers: toHeaders(req.headers),
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? Buffer.concat(chunks) : undefined,
+      })
+      const response = await handler(request)
+      res.writeHead(response.status, Object.fromEntries(response.headers))
+      res.end(Buffer.from(await response.arrayBuffer()))
+    } catch {
+      if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end('{"error":"Timestamp failed"}')
     }
-    const headers = new Headers()
-    for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v)
-    const hasBody = req.method !== 'GET' && req.method !== 'HEAD'
-    const request = new Request(`http://localhost${req.url ?? '/'}`, {
-      method: req.method,
-      headers,
-      body: hasBody ? Buffer.concat(chunks) : undefined,
-    })
-    const response = await handler(request)
-    res.writeHead(response.status, Object.fromEntries(response.headers))
-    res.end(Buffer.from(await response.arrayBuffer()))
   }
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`
+/** Node headers to web Headers. Skips HTTP/2 pseudo-headers (":method", ":path"), which Headers rejects. */
+export function toHeaders(raw: IncomingMessage['headers']): Headers {
+  const headers = new Headers()
+  for (const [k, v] of Object.entries(raw)) {
+    if (k.startsWith(':') || v === undefined) continue
+    headers.set(k, Array.isArray(v) ? v.join(', ') : v)
+  }
+  return headers
+}
+
+const isMain = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isMain) {
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean)
   const timestamp = toNodeHandler(createTimestampHandler({ allowedOrigins }))

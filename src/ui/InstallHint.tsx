@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks'
+import { Home, Share } from './icons.tsx'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -58,7 +59,9 @@ export function InstallHint({ always = false }: { always?: boolean }) {
 
   return (
     <aside class="install-hint">
-      <h2>Add Deposit Kit to your home screen</h2>
+      <h2>
+        <Home size={18} /> Add Deposit Kit to your home screen
+      </h2>
       <p class="small">It opens like an app and is easier to find when you move out.</p>
       {deferred ? (
         <button
@@ -73,7 +76,7 @@ export function InstallHint({ always = false }: { always?: boolean }) {
         </button>
       ) : isIos() ? (
         <p class="small">
-          In Safari, tap the <strong>Share</strong> button (the square with an arrow), then <strong>Add to Home Screen</strong>.
+          In Safari, tap <strong>Share</strong> <Share size={15} class="inline-icon" />, then <strong>Add to Home Screen</strong>.
         </p>
       ) : (
         <p class="small">

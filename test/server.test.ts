@@ -95,3 +95,13 @@ describe('timestamp endpoint', () => {
     expect((await req('https://evil.example')).headers.get('Access-Control-Allow-Origin')).toBeNull()
   })
 })
+
+describe('Node adapter', () => {
+  it('ignores HTTP/2 pseudo-headers instead of crashing', async () => {
+    const { toHeaders } = await import('../server/node.ts')
+    const h = toHeaders({ ':method': 'POST', ':path': '/api/timestamp', 'content-type': 'application/json', 'x-list': ['a', 'b'] })
+    expect(h.get('content-type')).toBe('application/json')
+    expect(h.get('x-list')).toBe('a, b')
+    expect([...h.keys()].some((k) => k.startsWith(':'))).toBe(false)
+  })
+})

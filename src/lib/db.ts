@@ -32,7 +32,11 @@ export function openDb(name = DB_NAME): Promise<IDBDatabase> {
     photos.createIndex('roomId', 'roomId')
     photos.createIndex('propertyId', 'propertyId')
   }
-  return req(open)
+  return req(open).then((db) => {
+    // If a newer version of the app opens in another tab, step aside so it can upgrade.
+    db.onversionchange = () => db.close()
+    return db
+  })
 }
 
 export class Store {

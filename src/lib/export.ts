@@ -68,6 +68,15 @@ export function extensionFor(photo: Pick<Photo, 'fileName' | 'original'>): strin
   return fromType[photo.original.type] ?? 'bin'
 }
 
+/** The OpenSSL check, one option per line so it never wraps mid-command. */
+export const VERIFY_COMMAND_LINES = [
+  'openssl ts -verify \\',
+  '  -data photos/01-kitchen/01.jpg \\',
+  '  -in photos/01-kitchen/01.jpg.tsr \\',
+  '  -CAfile certificates/freetsa-cacert.pem \\',
+  '  -untrusted certificates/freetsa-tsa.crt',
+]
+
 export const HOW_TO_VERIFY = [
   'Each photo has a SHA-256 fingerprint. Changing even one pixel changes the fingerprint.',
   'Each .tsr file is a signed timestamp (RFC 3161) from a public timestamp authority. It proves that fingerprint, and so this exact photo, existed at the time shown.',
@@ -146,7 +155,18 @@ function readme(m: Manifest): string {
     '',
     'How to verify',
     '-------------',
-    ...m.howToVerify.map((l) => `- ${l}`),
+    'Each photo has a SHA-256 fingerprint. A public timestamp service (FreeTSA) signed',
+    'each fingerprint, which shows the photo existed at the time listed in manifest.json.',
+    '',
+    'To check a photo, open a terminal in this folder and run (change the file names',
+    'to the photo you want to check):',
+    '',
+    ...VERIFY_COMMAND_LINES.map((l) => `    ${l}`),
+    '',
+    'The result should say "Verification: OK". An edited photo fails the check.',
+    'You can download the same certificates yourself from https://freetsa.org.',
+    'Photos timestamped by DigiCert (see manifest.json) check against your computer\'s',
+    'standard certificate list instead of the FreeTSA files.',
     '',
     'Deposit Kit gives you templates and deadlines, not legal advice.',
     '',

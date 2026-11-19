@@ -12,6 +12,8 @@ export interface SessionDeps {
   makeDisplay?: (file: Blob) => Promise<DisplayImage | null>
   fetchImpl?: typeof fetch
   now?: () => Date
+  /** Called after each timestamp attempt, for user feedback. */
+  onStampResult?: (photoId: string, ok: boolean) => void
 }
 
 export class Session {
@@ -105,10 +107,16 @@ export class Session {
         }))
         if (result) await this.touch(photo.propertyId)
         this.onChange()
+        this.deps.onStampResult?.(photoId, !!result)
       } finally {
         this.queued.delete(photoId)
       }
     })
+    return this.queue
+  }
+
+  /** Resolves when no timestamp request is queued or running. */
+  idle(): Promise<void> {
     return this.queue
   }
 

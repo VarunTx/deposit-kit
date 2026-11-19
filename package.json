@@ -10,7 +10,9 @@
     "test": "vitest run",
     "typecheck": "tsc -b",
     "server": "node server/node.ts",
-    "verify:tsa": "node scripts/verify-timestamp.ts"
+    "verify:tsa": "node scripts/verify-timestamp.ts",
+    "dev:phone": "vite --host --mode phone",
+    "preview:phone": "vite build && vite preview --host --mode phone --port 5173"
   },
   "dependencies": {
     "fflate": "^0.8.3",

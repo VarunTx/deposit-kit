@@ -7,6 +7,8 @@ import { Intro, SetupForm } from './ui/Setup.tsx'
 import { HomeView } from './ui/Home.tsx'
 import { RoomView } from './ui/Room.tsx'
 import { SaveView } from './ui/Save.tsx'
+import { Toasts, toast } from './ui/feedback.tsx'
+import { Lock, ShieldCheck } from './ui/icons.tsx'
 
 type Screen = { name: 'home' } | { name: 'edit' } | { name: 'room'; roomId: string } | { name: 'save' }
 
@@ -22,7 +24,16 @@ export function App() {
 
   useEffect(() => {
     Store.open()
-      .then((store) => setSession(new Session(store, bump)))
+      .then((store) =>
+        setSession(
+          new Session(store, bump, {
+            onStampResult: (_id, ok) =>
+              ok
+                ? toast('Timestamp added to your photo')
+                : toast('Photo saved. Timestamp will be added when you’re back online.', 'warn', 4500),
+          }),
+        ),
+      )
       .catch(() => setError('This browser won’t let Deposit Kit save data. Try turning off private browsing, or use Safari or Chrome.'))
   }, [bump])
 
@@ -41,7 +52,7 @@ export function App() {
     return () => window.removeEventListener('online', online)
   }, [session, property?.id])
 
-  useEffect(() => window.scrollTo(0, 0), [screen])
+  useEffect(() => window.scrollTo(0, 0), [screen, starting])
 
   const saveProperty = useCallback(
     async (fields: Pick<Property, 'label' | 'moveInDate' | 'state'>) => {
@@ -55,9 +66,11 @@ export function App() {
     [session, property, bump],
   )
 
+  const screenKey = property ? (screen.name === 'room' ? `room-${screen.roomId}` : screen.name) : starting ? 'setup' : 'intro'
+
   const body = useMemo(() => {
     if (error) return <p class="notice warn">{error}</p>
-    if (!session || property === undefined) return <p class="muted">Loading…</p>
+    if (!session || property === undefined) return <div class="loading" aria-label="Loading" />
     if (!property) {
       return starting ? <SetupForm onSave={saveProperty} onCancel={() => setStarting(false)} /> : <Intro onStart={() => setStarting(true)} />
     }
@@ -101,10 +114,27 @@ export function App() {
 
   return (
     <div class="page">
-      <main>{body}</main>
+      <header class="topbar">
+        <span class="brand">
+          <span class="brand-mark">
+            <ShieldCheck size={20} />
+          </span>
+          Deposit Kit
+        </span>
+        <span class="private-pill" title="Your photos are stored only on this device">
+          <Lock size={14} /> Private to this device
+        </span>
+      </header>
+      <main key={screenKey} class="screen">
+        {body}
+      </main>
       <footer class="site-footer">
+        <p class="footer-trust">
+          <Lock size={14} /> No account. No tracking. Deposit Kit never uploads your photos.
+        </p>
         <p>Deposit Kit gives you templates and deadlines, not legal advice. Check your state’s law or a tenant rights group if you’re unsure.</p>
       </footer>
+      <Toasts />
     </div>
   )
 }

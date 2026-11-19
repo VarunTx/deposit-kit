@@ -95,6 +95,7 @@ export function createTimestampHandler(opts: HandlerOptions = {}): (req: Request
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
     if (req.method !== 'POST') return json(405, { error: 'Use POST' }, { ...cors, Allow: 'POST, OPTIONS' })
 
+    if (Number(req.headers.get('Content-Length') ?? 0) > 1024) return json(413, { error: 'Send only a hash' }, cors)
     const text = await req.text()
     if (text.length > 1024) return json(413, { error: 'Send only a hash' }, cors)
     let sha256: unknown

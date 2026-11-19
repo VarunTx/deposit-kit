@@ -10,6 +10,23 @@ Free web app that helps US renters prove their rental's condition at move-in and
 
 Deposit Kit provides templates and deadlines, not legal advice.
 
+## Test on your phone
+
+Phones only allow the camera flow and photo hashing (`crypto.subtle`) on HTTPS, so plain `http://<your-ip>` won't work.
+
+1. Put your computer and phone on the same Wi-Fi.
+2. Run `npm run dev:phone`. It makes a local self-signed certificate (in `.cert/`, git-ignored) and prints a `Network: https://192.168.x.x:5173` address.
+3. Open that address on your phone. You'll see a certificate warning, which is expected for this local test:
+   - iPhone (Safari): tap **Show Details**, then **visit this website**, then **Visit Website**.
+   - Android (Chrome): tap **Advanced**, then **Proceed to 192.168.x.x (unsafe)**.
+4. If your Mac asks whether to allow incoming connections for `node`, allow it.
+
+`npm run preview:phone` does the same with the production build.
+
+Installing to the home screen and working offline need a trusted certificate, so for those, use a real HTTPS address: either a tunnel (for example `npm run dev`, then `ngrok http 5173`, which makes a temporary public URL) or a deployment.
+
+To check the PDF layout without a phone: `PDF_OUT=/tmp/sample.pdf npx vitest run test/render-pdf.test.ts`.
+
 ## Move-in evidence flow (v1)
 
 1. The user adds their home (address label, move-in date, state), then rooms.

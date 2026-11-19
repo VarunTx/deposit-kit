@@ -34,6 +34,7 @@ To check the PDF layout without a phone: `PDF_OUT=/tmp/sample.pdf npx vitest run
 3. For each photo the browser hashes the **original bytes** with SHA-256, keeps the original, and makes a smaller JPEG (longest side 2000px, quality 0.85) for the screen and the PDF.
 4. The photo is saved to IndexedDB first, then the hash (never the photo) goes to `/api/timestamp`, which asks FreeTSA for an RFC 3161 token. If that fails, the photo stays "not yet timestamped" and is retried on "Try again", on reload, and when the device comes back online.
 5. "Save my record" builds a PDF report and a zip (original photos, `.tsr` tokens, `manifest.json`, README, FreeTSA certificates). The app prompts for this after each room visit with new photos, because iOS can delete web storage after 7 days without use.
+6. "I have a saved record" (intro) or "Restore from a saved file" (home) loads that zip back, for a new phone or after the phone cleared the app's data. Each photo is re-hashed and each `.tsr` token is checked against it, and the times come from the signed tokens, not from the editable manifest. A photo whose token doesn't match is kept and gets a fresh timestamp. The restore replaces the device's record in one transaction, so a bad file changes nothing.
 
 Why the original is kept as well as the small copy: the timestamp covers the original's hash, so the original must be in the export or the proof can't be checked.
 
@@ -45,6 +46,7 @@ Why the original is kept as well as the small copy: the timestamp covers the ori
 | `src/lib/db.ts` | Small IndexedDB wrapper (properties, rooms, photos). |
 | `src/lib/session.ts` | Add photo → hash → save → timestamp queue with retry. |
 | `src/lib/export.ts`, `src/lib/pdf.ts` | Manifest, zip and PDF. |
+| `src/lib/restore.ts` | Reads a saved zip back into records, checking hashes and tokens. |
 | `server/timestamp.ts` | Web-standard `Request → Response` handler with provider fallback. |
 | `server/node.ts` | Standalone Node server for it (`npm run server`, port 8787). |
 | `scripts/verify-timestamp.ts` | Live FreeTSA + OpenSSL check; `RECORD_FIXTURE=1` refreshes `test/fixtures`. |

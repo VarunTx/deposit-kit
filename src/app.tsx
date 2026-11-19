@@ -72,7 +72,7 @@ export function App() {
     if (error) return <p class="notice warn">{error}</p>
     if (!session || property === undefined) return <div class="loading" aria-label="Loading" />
     if (!property) {
-      return starting ? <SetupForm onSave={saveProperty} onCancel={() => setStarting(false)} /> : <Intro onStart={() => setStarting(true)} />
+      return starting ? <SetupForm onSave={saveProperty} onCancel={() => setStarting(false)} /> : <Intro onStart={() => setStarting(true)} session={session} />
     }
     switch (screen.name) {
       case 'edit':

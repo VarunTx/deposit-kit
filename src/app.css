@@ -184,6 +184,13 @@ p { margin: 0 0 8px; }
 .file-icon { flex: none; width: 50px; height: 50px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-ink); }
 .file-card.saved .file-icon { background: var(--ok-bg); color: var(--ok-text); animation: pop 0.4s cubic-bezier(.2,1.4,.4,1) both; }
 
+/* Restore */
+.restore { display: grid; gap: 10px; }
+.restore.home { justify-items: start; }
+.restore-intro { display: grid; gap: 8px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--line); }
+.restore-intro p { margin: 0; }
+.restore-home p { margin: 0; }
+
 /* Install hint */
 .install-hint { display: grid; gap: 6px; justify-items: start; padding: 16px; border: 1px dashed var(--line); border-radius: var(--radius); background: var(--card-2); }
 .install-hint h2 { display: flex; align-items: center; gap: 8px; font-size: 1rem; margin: 0; }

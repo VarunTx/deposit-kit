@@ -96,6 +96,24 @@ export class Store {
     return this.update<Property>('properties', id, patch)
   }
 
+  /**
+   * Replace everything on this device with a restored record, in one transaction:
+   * either the whole restore lands or nothing changes.
+   */
+  async replaceAll(property: Property, rooms: Room[], photos: Photo[]): Promise<void> {
+    const tx = this.db.transaction(['properties', 'rooms', 'photos'], 'readwrite')
+    const ps = tx.objectStore('properties')
+    const rs = tx.objectStore('rooms')
+    const phs = tx.objectStore('photos')
+    ps.clear()
+    rs.clear()
+    phs.clear()
+    ps.put(property)
+    for (const r of rooms) rs.put(r)
+    for (const p of photos) phs.put(p)
+    await done(tx)
+  }
+
   // Rooms
   async listRooms(propertyId: string): Promise<Room[]> {
     const rooms = await this.byIndex<Room>('rooms', 'propertyId', propertyId)

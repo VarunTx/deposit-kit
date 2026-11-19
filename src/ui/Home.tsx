@@ -4,6 +4,7 @@ import { needsExport } from '../lib/session.ts'
 import type { Photo, Property, Room } from '../lib/types.ts'
 import { stateName } from '../lib/states.ts'
 import { InstallHint } from './InstallHint.tsx'
+import { RestoreButton } from './Restore.tsx'
 import { useObjectUrl } from './feedback.tsx'
 import { Camera, Check, ChevronRight, Download, Pencil, Plus, RoomIcon, ShieldCheck, Wifi } from './icons.tsx'
 
@@ -190,6 +191,12 @@ export function HomeView({
       )}
 
       <InstallHint />
+
+      <section class="section restore-home">
+        <h2>Restore a saved record</h2>
+        <p class="muted small">Switched phones, or lost your photos? Load the zip file you saved. It replaces what’s on this device.</p>
+        <RestoreButton session={session} existingPhotos={photos.length} unsaved={unsaved} variant="home" />
+      </section>
     </div>
   )
 }

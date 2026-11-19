@@ -5,6 +5,7 @@
 import { newId, type Store } from './db.ts'
 import { sha256Hex } from './hash.ts'
 import { makeDisplayImage, type DisplayImage } from './image.ts'
+import { readBackup, type RestoreReport } from './restore.ts'
 import { fetchTimestamp, stampFailed, stampSucceeded } from './stamp.ts'
 import type { Photo, Property, Room } from './types.ts'
 
@@ -143,6 +144,19 @@ export class Session {
     await this.store.deleteRoom(room.id)
     await this.touch(room.propertyId)
     this.onChange()
+  }
+
+  /** Replace this device's record with one from a saved zip, then timestamp anything that needs it. */
+  async restore(zip: Blob, onProgress?: (done: number, total: number) => void): Promise<RestoreReport> {
+    const plan = await readBackup(new Uint8Array(await zip.arrayBuffer()), {
+      makeDisplay: this.deps.makeDisplay ?? makeDisplayImage,
+      now: this.deps.now,
+      onProgress,
+    })
+    await this.store.replaceAll(plan.property, plan.rooms, plan.photos)
+    this.onChange()
+    void this.stampMissing(plan.property.id)
+    return plan.report
   }
 
   async markExported(propertyId: string): Promise<void> {

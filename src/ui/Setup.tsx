@@ -2,8 +2,10 @@ import { useState } from 'preact/hooks'
 import type { Property } from '../lib/types.ts'
 import { US_STATES } from '../lib/states.ts'
 import { ArrowLeft, Camera, Clock, FileText, Fingerprint, Lock, ShieldCheck } from './icons.tsx'
+import type { Session } from '../lib/session.ts'
+import { RestoreButton } from './Restore.tsx'
 
-export function Intro({ onStart }: { onStart: () => void }) {
+export function Intro({ onStart, session }: { onStart: () => void; session: Session }) {
   return (
     <div class="stack">
       <section class="hero">
@@ -61,6 +63,10 @@ export function Intro({ onStart }: { onStart: () => void }) {
         Start my move-in record
       </button>
       <p class="muted small center">Takes about 10 minutes. Have your phone charged and the lights on.</p>
+      <div class="restore-intro">
+        <p class="muted small center">New phone, or the app lost your photos? Load the zip file you saved.</p>
+        <RestoreButton session={session} existingPhotos={0} unsaved={false} variant="intro" />
+      </div>
     </div>
   )
 }

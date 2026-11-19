@@ -20,5 +20,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "server", "scripts", "test", "src/lib", "src/vite-env.d.ts"]
+  "include": ["vite.config.ts", "capacitor.config.ts", "server", "scripts", "test", "functions", "src/lib", "src/vite-env.d.ts"]
 }

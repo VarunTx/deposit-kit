@@ -5,6 +5,7 @@ import type { Photo, Property } from '../lib/types.ts'
 import { buildManifest, buildZip, exportBaseName } from '../lib/export.ts'
 import { buildPdf } from '../lib/pdf.ts'
 import { InstallHint } from './InstallHint.tsx'
+import { isNativeApp, shareFileNative } from '../lib/native.ts'
 import { Archive, ArrowLeft, Check, FileText, ShieldCheck, Wifi } from './icons.tsx'
 
 interface Ready {
@@ -21,6 +22,7 @@ function canShareFile(file: File): boolean {
 }
 
 async function saveFile(file: File): Promise<boolean> {
+  if (isNativeApp()) return shareFileNative(file)
   if (canShareFile(file)) {
     try {
       await navigator.share({ files: [file], title: file.name })
@@ -50,7 +52,12 @@ async function settleTimestamps(session: Session, propertyId: string, maxMs = 20
   await Promise.race([session.stampMissing(propertyId), new Promise((r) => setTimeout(r, maxMs))])
 }
 
-type Stage = 'stamping' | 'building' | 'ready' | 'error'
+type Stage = 'stamping' | 'building' | 'ready' | 'error' | 'updated'
+
+/** An app update replaced the cached code files while this page was open. */
+function isStaleCode(e: unknown): boolean {
+  return /dynamically imported module|Importing a module script failed|error loading dynamically|Failed to fetch/i.test(String((e as Error)?.message ?? e))
+}
 
 export function SaveView({ session, property, onBack }: { session: Session; property: Property; onBack: () => void }) {
   const [stage, setStage] = useState<Stage>('stamping')
@@ -82,7 +89,7 @@ export function SaveView({ session, property, onBack }: { session: Session; prop
         setStage('ready')
       } catch (e) {
         console.error(e)
-        if (!cancelled) setStage('error')
+        if (!cancelled) setStage(isStaleCode(e) ? 'updated' : 'error')
       }
     })()
     return () => {
@@ -116,7 +123,7 @@ export function SaveView({ session, property, onBack }: { session: Session; prop
         <p>
           {done
             ? 'Keep both files until your deposit is back. Emailing them to yourself is an easy way to keep a copy.'
-            : 'These two files are your proof. Save them to iCloud Drive, Google Drive, your computer, or email them to yourself.'}
+            : 'These two files are your proof. Save them to Files, iCloud Drive, Google Drive or your computer, or email them to yourself.'}
         </p>
       </section>
 
@@ -131,6 +138,15 @@ export function SaveView({ session, property, onBack }: { session: Session; prop
       )}
 
       {stage === 'error' && <p class="notice warn">Something went wrong while making your files. Go back and try again.</p>}
+      {stage === 'updated' && (
+        <div class="notice">
+          <p class="notice-title">Deposit Kit just updated</p>
+          <p>Reload to finish saving. Your photos and notes are safe on this device.</p>
+          <button class="btn primary" onClick={() => location.reload()}>
+            Reload
+          </button>
+        </div>
+      )}
 
       {ready && (
         <>

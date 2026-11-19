@@ -7,6 +7,9 @@ Free web app that helps US renters prove their rental's condition at move-in and
 - Test: `npm test`
 - Build: `npm run build` (strict TypeScript, output in `dist/`)
 - Check a real timestamp end to end: `npm run verify:tsa` (calls FreeTSA, then runs `openssl ts -verify`)
+- Production server: `npm run build`, then `node server/node.ts` (or `docker build -t deposit-kit .`)
+- Store apps (Capacitor): `npm run build:native`, then `npm run ios` / `npm run android`
+- Launching: [`docs/launch.md`](docs/launch.md) and `npm run check:launch`
 
 Deposit Kit provides templates and deadlines, not legal advice.
 

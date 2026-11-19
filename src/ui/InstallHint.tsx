@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Home, Share } from './icons.tsx'
+import { isNativeApp } from '../lib/native.ts'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -46,7 +47,7 @@ export function InstallHint({ always = false }: { always?: boolean }) {
     return () => void listeners.delete(l)
   }, [])
 
-  if (isStandalone() || (dismissed && !always)) return null
+  if (isNativeApp() || isStandalone() || (dismissed && !always)) return null
 
   const dismiss = () => {
     try {

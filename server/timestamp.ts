@@ -6,6 +6,7 @@
 // under Node (server/node.ts), the Vite dev server, or a serverless runtime.
 
 import { buildTimeStampRequest, checkTimeStampResponse, toBase64, toHex, fromHex } from '../src/lib/tsp.ts'
+import type { RateLimiter } from './rate-limit.ts'
 
 export interface TsaProvider {
   /** Short name saved with each photo, e.g. "FreeTSA". */
@@ -72,6 +73,8 @@ export async function requestTimestamp(sha256Hex: string, opts: TimestampOptions
 export interface HandlerOptions extends TimestampOptions {
   /** Origins allowed to call from another site. Same-origin needs nothing. */
   allowedOrigins?: string[]
+  /** Per-client and total request limits. Omit to allow everything (tests, local dev). */
+  limiter?: RateLimiter
 }
 
 function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
@@ -85,8 +88,8 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
  * POST /api/timestamp  {"sha256": "<64 hex chars>"}
  * 200 {"provider", "tsr" (base64 TimeStampResp), "genTime" (ISO), "serialNumber"}
  */
-export function createTimestampHandler(opts: HandlerOptions = {}): (req: Request) => Promise<Response> {
-  return async (req) => {
+export function createTimestampHandler(opts: HandlerOptions = {}): (req: Request, clientIp?: string) => Promise<Response> {
+  return async (req, clientIp) => {
     const origin = req.headers.get('Origin')
     const cors: Record<string, string> =
       origin && opts.allowedOrigins?.includes(origin)
@@ -106,6 +109,10 @@ export function createTimestampHandler(opts: HandlerOptions = {}): (req: Request
     }
     if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(sha256)) {
       return json(400, { error: 'sha256 must be 64 hex characters' }, cors)
+    }
+    const wait = opts.limiter?.take(clientIp ?? 'unknown') ?? 0
+    if (wait > 0) {
+      return json(429, { error: 'Too many timestamp requests. Try again in a minute.' }, { ...cors, 'Retry-After': String(wait) })
     }
 
     try {

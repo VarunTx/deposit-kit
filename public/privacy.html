@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy policy · Deposit Kit</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body>
+<main>
+<p class="brand"><a href="/">Deposit Kit</a></p>
+<h1>Privacy policy</h1>
+<p class="muted">Effective November 18, 2026</p>
+
+<div class="summary">
+  <p><strong>In short:</strong> Deposit Kit has no accounts, no ads, no analytics and no tracking. Your photos, notes and address stay on your device. The only thing that leaves it is a fingerprint of each photo, which can’t be turned back into the photo.</p>
+</div>
+
+<h2>What stays on your device</h2>
+<p>Your home’s address or name, move-in date, state, rooms, photos and notes are stored only in the app’s storage on your phone or computer. We can’t see them, and they are never uploaded to us or anyone else.</p>
+
+<h2>What leaves your device</h2>
+<p>To give each photo a timestamp, the app calculates its SHA-256 fingerprint: a 64-character code that changes if the photo changes. The fingerprint can’t be used to rebuild or view the photo.</p>
+<ul>
+  <li>The app sends the fingerprint to our timestamp server.</li>
+  <li>Our server passes it to a public timestamp service, FreeTSA (Germany). If FreeTSA is unavailable, it uses DigiCert (United States) instead. The service signs the fingerprint with the current time and sends back a timestamp, which is saved with your photo.</li>
+  <li>The timestamp service sees the request coming from our server, not from your device.</li>
+  <li>Our server doesn’t store fingerprints. It keeps a short-lived count of requests per network address in memory to prevent abuse. Our hosting provider may keep standard technical logs, such as network addresses, for security.</li>
+</ul>
+
+<h2>Files you save</h2>
+<p>When you save your record, the app creates a PDF report and a zip file on your device. They contain your photos, notes and address. You choose where they go, for example your email or cloud storage, and those services’ own privacy terms apply there.</p>
+<p>Original photos can include details your camera added, such as the location where they were taken. We keep the original photos exactly as taken, because changing them would break the timestamp check.</p>
+
+<h2>Camera and photos</h2>
+<p>The app uses your camera, or lets you choose photos from your library, only when you tap to add a photo. It doesn’t access any other photos.</p>
+
+<h2>What we don’t do</h2>
+<ul>
+  <li>No accounts or sign-in</li>
+  <li>No cookies, analytics, advertising or tracking</li>
+  <li>No selling or sharing of personal information</li>
+</ul>
+
+<h2>Deleting your data</h2>
+<p>You can delete photos and rooms in the app at any time. To remove everything, delete the app, or clear this website’s data in your browser settings. Files you saved are yours to keep or delete.</p>
+
+<h2>Children</h2>
+<p>Deposit Kit is meant for adults renting a home. It isn’t directed at children under 13.</p>
+
+<h2>Not legal advice</h2>
+<p>Deposit Kit gives you templates and deadlines, not legal advice. Check your state’s law or a tenant rights group if you’re unsure.</p>
+
+<h2>Changes and contact</h2>
+<p>If this policy changes, we’ll update this page and its date. Questions: <a href="mailto:CONTACT_EMAIL">CONTACT_EMAIL</a>.</p>
+
+<p class="footer"><a href="/">Open Deposit Kit</a> · <a href="/support.html">Help</a></p>
+</main>
+</body>
+</html>

@@ -18,25 +18,31 @@ export function RoomView({
   roomId,
   version,
   onBack,
+  onPhotoAdded,
   onSave,
 }: {
   session: Session
   property: Property
   roomId: string
   version: number
-  onBack: (addedThisVisit: number) => void
+  onBack: () => void
+  onPhotoAdded: () => void
   onSave: () => void
 }) {
   const [room, setRoom] = useState<Room | null>(null)
   const [photos, setPhotos] = useState<Photo[]>([])
   const [busy, setBusy] = useState(0)
-  const [added, setAdded] = useState(0)
   const [problem, setProblem] = useState<string | null>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const libraryRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    session.store.listRooms(property.id).then((rooms) => setRoom(rooms.find((r) => r.id === roomId) ?? null))
+    session.store.listRooms(property.id).then((rooms) => {
+      const found = rooms.find((r) => r.id === roomId) ?? null
+      // A room that no longer exists (deleted, or reached with Back/Forward after a restore).
+      if (!found) onBack()
+      else setRoom(found)
+    })
     session.store.listPhotos(roomId).then(setPhotos)
   }, [session, property.id, roomId, version])
 
@@ -52,7 +58,7 @@ export function RoomView({
       try {
         if (file.type && !file.type.startsWith('image/')) throw new Error('not an image')
         await session.addPhoto(room, file)
-        setAdded((n) => n + 1)
+        onPhotoAdded()
       } catch (e) {
         const quota = e instanceof DOMException && e.name === 'QuotaExceededError'
         setProblem(
@@ -72,7 +78,7 @@ export function RoomView({
 
   return (
     <div class="stack">
-      <button class="back" onClick={() => onBack(added)}>
+      <button class="back" onClick={onBack}>
         <ArrowLeft size={18} /> All rooms
       </button>
       <header class="room-head">
@@ -153,7 +159,7 @@ export function RoomView({
       )}
 
       <div class="room-actions">
-        <button class="btn big" onClick={() => onBack(added)}>
+        <button class="btn big" onClick={onBack}>
           <Check size={20} /> Done with {room.name}
         </button>
         {photos.length > 0 && (
@@ -170,7 +176,7 @@ export function RoomView({
                 : `Delete ${room.name}?`
             if (confirm(msg)) {
               await session.deleteRoom(room)
-              onBack(0)
+              onBack()
             }
           }}
         >
@@ -203,6 +209,19 @@ function PhotoCard({ photo, index, session }: { photo: Photo; index: number; ses
     },
     [session, photo.id],
   )
+
+  // Phones can kill a backgrounded app without warning; save the note as soon as we're hidden.
+  useEffect(() => {
+    const flush = (e: Event) => {
+      if ((e.type === 'pagehide' || document.visibilityState === 'hidden') && timer.current !== undefined) save(latest.current)
+    }
+    document.addEventListener('visibilitychange', flush)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      document.removeEventListener('visibilitychange', flush)
+      window.removeEventListener('pagehide', flush)
+    }
+  })
 
   const save = (value: string) => {
     window.clearTimeout(timer.current)

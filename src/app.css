@@ -214,6 +214,7 @@ p { margin: 0 0 8px; }
 .toast.warn .icon { color: #fbbf24; }
 
 .site-footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.85rem; color: var(--muted); }
+.footer-links a { color: var(--accent-ink); font-weight: 600; }
 .footer-trust { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--accent-ink); }
 
 @media (min-width: 640px) {

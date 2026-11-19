@@ -48,9 +48,13 @@ export default defineConfig(({ mode }) => {
     preact(),
     timestampEndpoint(),
     VitePWA({
+      // The store apps ship their files inside the app; a service worker there would
+      // only risk serving stale files after an app update.
+      disable: mode === 'native',
       registerType: 'autoUpdate',
       workbox: {
-        navigateFallbackDenylist: [/^\/api\//],
+        // API calls and the help/privacy pages must not be replaced by the app shell offline.
+        navigateFallbackDenylist: [/^\/api\//, /^\/(privacy|support)(\.html)?$/],
       },
       manifest: {
         name: 'Deposit Kit',

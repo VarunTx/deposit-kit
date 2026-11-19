@@ -125,6 +125,11 @@ class Layout {
   }
 }
 
+/** Load jsPDF ahead of time. Once loaded it stays in memory for this page. */
+export function preloadPdf(): Promise<unknown> {
+  return import('jspdf')
+}
+
 export async function buildPdf(manifest: Manifest, entries: ExportEntry[]): Promise<Blob> {
   const { jsPDF } = await import('jspdf')
   const doc: JsPdf = new jsPDF({ unit: 'mm', format: 'letter', compress: true })

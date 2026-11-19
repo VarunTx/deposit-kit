@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import './app.css'
 import { Store, newId } from './lib/db.ts'
 import { Session } from './lib/session.ts'
@@ -9,18 +9,52 @@ import { RoomView } from './ui/Room.tsx'
 import { SaveView } from './ui/Save.tsx'
 import { Toasts, toast } from './ui/feedback.tsx'
 import { Lock, ShieldCheck } from './ui/icons.tsx'
+import { preloadPdf } from './lib/pdf.ts'
 
-type Screen = { name: 'home' } | { name: 'edit' } | { name: 'room'; roomId: string } | { name: 'save' }
+type Screen = { name: 'home' } | { name: 'setup' } | { name: 'edit' } | { name: 'room'; roomId: string } | { name: 'save' }
+
+function stateScreen(state: unknown): Screen {
+  const s = (state as { dk?: Screen } | null)?.dk
+  return s && typeof s.name === 'string' ? s : { name: 'home' }
+}
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [property, setProperty] = useState<Property | null | undefined>(undefined)
-  const [screen, setScreen] = useState<Screen>({ name: 'home' })
+  const [screen, setScreen] = useState<Screen>(() => stateScreen(history.state))
   const [version, setVersion] = useState(0)
-  const [starting, setStarting] = useState(false)
   const [promptSave, setPromptSave] = useState(false)
   const bump = useCallback(() => setVersion((v) => v + 1), [])
+
+  // Navigation goes through browser history, so the phone's Back button and
+  // iOS swipe-back move between screens instead of leaving the app.
+  const current = useRef(screen)
+  const addedInRoom = useRef(0)
+  const show = useCallback((next: Screen) => {
+    const prev = current.current
+    if (prev.name === 'room' && !(next.name === 'room' && next.roomId === prev.roomId)) {
+      // Leaving a room where photos were added: suggest saving (unless heading to Save already).
+      setPromptSave(addedInRoom.current > 0 && next.name === 'home')
+      addedInRoom.current = 0
+    }
+    current.current = next
+    setScreen(next)
+  }, [])
+  const go = useCallback((next: Screen) => {
+    history.pushState({ dk: next }, '')
+    show(next)
+  }, [show])
+  const back = useCallback(() => {
+    if (stateScreen(history.state).name !== 'home') history.back()
+    else show({ name: 'home' })
+  }, [show])
+  useEffect(() => {
+    if (!(history.state as { dk?: Screen } | null)?.dk) history.replaceState({ dk: { name: 'home' } }, '')
+    const onPop = (e: PopStateEvent) => show(stateScreen(e.state))
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [show])
 
   useEffect(() => {
     Store.open()
@@ -52,7 +86,15 @@ export function App() {
     return () => window.removeEventListener('online', online)
   }, [session, property?.id])
 
-  useEffect(() => window.scrollTo(0, 0), [screen, starting])
+  useEffect(() => window.scrollTo(0, 0), [screen])
+
+  // Load the PDF code early (it's in the offline cache), so saving still works if
+  // an app update replaces the cached files while this page is open.
+  useEffect(() => {
+    if (!session) return
+    const t = setTimeout(() => void preloadPdf().catch(() => {}), 3000)
+    return () => clearTimeout(t)
+  }, [session])
 
   const saveProperty = useCallback(
     async (fields: Pick<Property, 'label' | 'moveInDate' | 'state'>) => {
@@ -60,23 +102,27 @@ export function App() {
       const now = new Date().toISOString()
       if (property) await session.store.updateProperty(property.id, (p) => ({ ...p, ...fields, lastChangeAt: now }))
       else await session.store.saveProperty({ id: newId(), createdAt: now, ...fields })
-      setScreen({ name: 'home' })
       bump()
+      back()
     },
-    [session, property, bump],
+    [session, property, bump, back],
   )
 
-  const screenKey = property ? (screen.name === 'room' ? `room-${screen.roomId}` : screen.name) : starting ? 'setup' : 'intro'
+  const screenKey = !property ? (screen.name === 'setup' ? 'setup' : 'intro') : screen.name === 'room' ? `room-${screen.roomId}` : screen.name
 
   const body = useMemo(() => {
     if (error) return <p class="notice warn">{error}</p>
     if (!session || property === undefined) return <div class="loading" aria-label="Loading" />
     if (!property) {
-      return starting ? <SetupForm onSave={saveProperty} onCancel={() => setStarting(false)} /> : <Intro onStart={() => setStarting(true)} session={session} />
+      return screen.name === 'setup' ? (
+        <SetupForm onSave={saveProperty} onCancel={back} />
+      ) : (
+        <Intro onStart={() => go({ name: 'setup' })} session={session} />
+      )
     }
     switch (screen.name) {
       case 'edit':
-        return <SetupForm initial={property} onSave={saveProperty} onCancel={() => setScreen({ name: 'home' })} />
+        return <SetupForm initial={property} onSave={saveProperty} onCancel={back} />
       case 'room':
         return (
           <RoomView
@@ -84,33 +130,31 @@ export function App() {
             property={property}
             roomId={screen.roomId}
             version={version}
-            onBack={(added) => {
-              setPromptSave(added > 0)
-              setScreen({ name: 'home' })
-            }}
-            onSave={() => setScreen({ name: 'save' })}
+            onBack={back}
+            onPhotoAdded={() => (addedInRoom.current += 1)}
+            onSave={() => go({ name: 'save' })}
           />
         )
       case 'save':
-        return <SaveView session={session} property={property} onBack={() => setScreen({ name: 'home' })} />
+        return <SaveView session={session} property={property} onBack={back} />
       default:
         return (
           <HomeView
             session={session}
             property={property}
             version={version}
-            onOpenRoom={(roomId) => setScreen({ name: 'room', roomId })}
-            onEdit={() => setScreen({ name: 'edit' })}
+            onOpenRoom={(roomId) => go({ name: 'room', roomId })}
+            onEdit={() => go({ name: 'edit' })}
             onSave={() => {
               setPromptSave(false)
-              setScreen({ name: 'save' })
+              go({ name: 'save' })
             }}
             promptSave={promptSave}
             onDismissPrompt={() => setPromptSave(false)}
           />
         )
     }
-  }, [error, session, property, screen, version, starting, saveProperty, promptSave])
+  }, [error, session, property, screen, version, saveProperty, promptSave, go, back])
 
   return (
     <div class="page">
@@ -133,6 +177,9 @@ export function App() {
           <Lock size={14} /> No account. No tracking. Deposit Kit never uploads your photos.
         </p>
         <p>Deposit Kit gives you templates and deadlines, not legal advice. Check your state’s law or a tenant rights group if you’re unsure.</p>
+        <p class="footer-links">
+          <a href="/support.html">Help</a> · <a href="/privacy.html">Privacy</a>
+        </p>
       </footer>
       <Toasts />
     </div>

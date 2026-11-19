@@ -12,14 +12,24 @@
     "server": "node server/node.ts",
     "verify:tsa": "node scripts/verify-timestamp.ts",
     "dev:phone": "vite --host --mode phone",
-    "preview:phone": "vite build && vite preview --host --mode phone --port 5173"
+    "preview:phone": "vite build && vite preview --host --mode phone --port 5173",
+    "build:native": "tsc -b && vite build --mode native && cap sync",
+    "ios": "cap open ios",
+    "android": "cap open android",
+    "check:launch": "node scripts/check-launch.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/ios": "^8.6.2",
+    "@capacitor/share": "^8.0.3",
     "fflate": "^0.8.3",
     "jspdf": "^4.2.1",
     "preact": "^11.1.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@preact/preset-vite": "^2.10.6",
     "@types/node": "^24.19.2",
     "fake-indexeddb": "^6.2.8",

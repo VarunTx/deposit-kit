@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Deposit Kit</string>
+    <string name="title_activity_main">Deposit Kit</string>
+    <string name="package_name">us.varuntx.depositkit</string>
+    <string name="custom_url_scheme">us.varuntx.depositkit</string>
+</resources>

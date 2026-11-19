@@ -11,12 +11,18 @@ function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const p = join(dir, name)
     if (statSync(p).isDirectory()) return files(p)
-    return /\.(tsx?|css|html|json)$/.test(name) ? [p] : []
+    return /\.(tsx?|css|html|json|md)$/.test(name) ? [p] : []
   })
 }
 
 describe('user-facing copy', () => {
-  const sources = [...files(join(root, 'src')), join(root, 'index.html'), join(root, 'vite.config.ts')]
+  const sources = [
+    ...files(join(root, 'src')),
+    ...files(join(root, 'public')),
+    join(root, 'store', 'listing.md'),
+    join(root, 'index.html'),
+    join(root, 'vite.config.ts'),
+  ]
 
   it.each(sources.map((p) => [p.slice(root.length + 1), p]))('%s avoids banned words', (_name, path) => {
     const text = readFileSync(path, 'utf8').replace(/not legal advice/gi, '')

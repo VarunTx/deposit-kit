@@ -4,6 +4,4 @@ dev-dist
 .cert
 .claude
 .git
-ios
-android
 *.local

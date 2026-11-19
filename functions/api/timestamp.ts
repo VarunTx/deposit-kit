@@ -6,10 +6,7 @@
 import { createTimestampHandler } from '../../server/timestamp.ts'
 import { defaultLimiter } from '../../server/rate-limit.ts'
 
-const handler = createTimestampHandler({
-  allowedOrigins: ['capacitor://localhost', 'https://localhost'],
-  limiter: defaultLimiter(),
-})
+const handler = createTimestampHandler({ limiter: defaultLimiter() })
 
 export const onRequest = (context: { request: Request }): Promise<Response> =>
   handler(context.request, context.request.headers.get('CF-Connecting-IP') ?? undefined)

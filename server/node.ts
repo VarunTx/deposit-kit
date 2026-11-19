@@ -7,8 +7,8 @@
 //   STATIC_DIR        default ./dist (set to "" to serve only the API)
 //   TRUST_PROXY=1     read the client IP from X-Forwarded-For / CF-Connecting-IP
 //                     (set this behind Traefik/Dokploy or Cloudflare)
-//   ALLOWED_ORIGINS   extra origins allowed to call the API cross-origin
-//                     (the iOS and Android apps' origins are always allowed)
+//   ALLOWED_ORIGINS   origins allowed to call the API cross-origin (not needed
+//                     when the app and API share one domain)
 
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -18,9 +18,6 @@ import { createTimestampHandler } from './timestamp.ts'
 import { defaultLimiter } from './rate-limit.ts'
 
 const MAX_BODY = 1024
-
-/** Origins of the store apps (Capacitor): iOS uses capacitor://localhost, Android https://localhost. */
-export const NATIVE_ORIGINS = ['capacitor://localhost', 'https://localhost']
 
 type Handler = (req: Request, clientIp?: string) => Promise<Response>
 
@@ -147,7 +144,7 @@ export function serveStatic(root: string, req: IncomingMessage, res: ServerRespo
 export function createAppServer(opts: { staticDir?: string; trustProxy?: boolean; allowedOrigins?: string[] } = {}) {
   const trustProxy = opts.trustProxy ?? false
   const timestamp = toNodeHandler(
-    createTimestampHandler({ allowedOrigins: [...NATIVE_ORIGINS, ...(opts.allowedOrigins ?? [])], limiter: defaultLimiter() }),
+    createTimestampHandler({ allowedOrigins: opts.allowedOrigins, limiter: defaultLimiter() }),
     (r) => clientIp(r, trustProxy),
   )
   const root = opts.staticDir ? resolve(opts.staticDir) : ''

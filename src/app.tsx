@@ -22,7 +22,11 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [property, setProperty] = useState<Property | null | undefined>(undefined)
-  const [screen, setScreen] = useState<Screen>(() => stateScreen(history.state))
+  // After a reload, reopen the room you were in, but nothing else (a stale Save or Edit screen would confuse).
+  const [screen, setScreen] = useState<Screen>(() => {
+    const s = stateScreen(history.state)
+    return s.name === 'room' ? s : { name: 'home' }
+  })
   const [version, setVersion] = useState(0)
   const [promptSave, setPromptSave] = useState(false)
   const bump = useCallback(() => setVersion((v) => v + 1), [])
@@ -45,12 +49,17 @@ export function App() {
     history.pushState({ dk: next }, '')
     show(next)
   }, [show])
+  /** Go home without adding a history entry (used when the current screen no longer exists). */
+  const home = useCallback(() => {
+    history.replaceState({ dk: { name: 'home' } }, '')
+    show({ name: 'home' })
+  }, [show])
   const back = useCallback(() => {
     if (stateScreen(history.state).name !== 'home') history.back()
     else show({ name: 'home' })
   }, [show])
   useEffect(() => {
-    if (!(history.state as { dk?: Screen } | null)?.dk) history.replaceState({ dk: { name: 'home' } }, '')
+    if (current.current.name === 'home') history.replaceState({ dk: { name: 'home' } }, '')
     const onPop = (e: PopStateEvent) => show(stateScreen(e.state))
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -131,6 +140,7 @@ export function App() {
             roomId={screen.roomId}
             version={version}
             onBack={back}
+            onMissing={home}
             onPhotoAdded={() => (addedInRoom.current += 1)}
             onSave={() => go({ name: 'save' })}
           />
@@ -154,7 +164,7 @@ export function App() {
           />
         )
     }
-  }, [error, session, property, screen, version, saveProperty, promptSave, go, back])
+  }, [error, session, property, screen, version, saveProperty, promptSave, go, back, home])
 
   return (
     <div class="page">

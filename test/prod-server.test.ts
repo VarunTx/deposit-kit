@@ -51,7 +51,7 @@ describe('production server', () => {
     writeFileSync(join(dir, 'assets', 'index-abc123.js'), 'console.log(1)')
     writeFileSync(join(dir, 'sw.js'), '//sw')
     writeFileSync(join(dir, 'privacy.html'), '<h1>Privacy policy</h1>')
-    const server = createAppServer({ staticDir: dir })
+    const server = createAppServer({ staticDir: dir, allowedOrigins: ['https://partner.example'] })
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
     close = () => server.close()
@@ -85,10 +85,9 @@ describe('production server', () => {
     expect(big.status).toBe(413)
   })
 
-  it('allows the store apps to call the API cross-origin, and nobody else', async () => {
+  it('only allows configured origins to call the API cross-origin', async () => {
     const pre = (origin: string) => fetch(`${base}/api/timestamp`, { method: 'OPTIONS', headers: { Origin: origin } })
-    expect((await pre('capacitor://localhost')).headers.get('access-control-allow-origin')).toBe('capacitor://localhost')
-    expect((await pre('https://localhost')).headers.get('access-control-allow-origin')).toBe('https://localhost')
+    expect((await pre('https://partner.example')).headers.get('access-control-allow-origin')).toBe('https://partner.example')
     expect((await pre('https://evil.example')).headers.get('access-control-allow-origin')).toBeNull()
   })
 })

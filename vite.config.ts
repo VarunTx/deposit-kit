@@ -48,16 +48,16 @@ export default defineConfig(({ mode }) => {
     preact(),
     timestampEndpoint(),
     VitePWA({
-      // The store apps ship their files inside the app; a service worker there would
-      // only risk serving stale files after an app update.
-      disable: mode === 'native',
       registerType: 'autoUpdate',
       workbox: {
         // API calls and the help/privacy pages must not be replaced by the app shell offline.
         navigateFallbackDenylist: [/^\/api\//, /^\/(privacy|support)(\.html)?$/],
       },
       manifest: {
+        id: '/',
         name: 'Deposit Kit',
+        lang: 'en-US',
+        categories: ['productivity', 'utilities', 'lifestyle'],
         short_name: 'Deposit Kit',
         description: 'Prove your rental’s condition and get your security deposit back. Free, and your photos stay on your phone.',
         theme_color: '#0f766e',

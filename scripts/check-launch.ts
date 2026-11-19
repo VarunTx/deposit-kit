@@ -11,11 +11,6 @@ const problems: string[] = []
 for (const page of ['public/privacy.html', 'public/support.html']) {
   if (read(page).includes('CONTACT_EMAIL')) problems.push(`${page}: replace CONTACT_EMAIL with a real support email address`)
 }
-if (/YOUR-DOMAIN/.test(read('.env.native'))) problems.push('.env.native: set VITE_TIMESTAMP_URL to the hosted https://<domain>/api/timestamp')
-if (!existsSync(join(root, 'ios/App/App.xcodeproj'))) problems.push('ios/: missing. Run `npx cap add ios --packagemanager SPM`')
-if (!existsSync(join(root, 'android/app'))) problems.push('android/: missing. Run `npx cap add android`')
-const nativeBundle = read('ios/App/App/public/index.html')
-if (nativeBundle && !nativeBundle.includes('index-')) problems.push('ios/App/App/public: stale. Run `npm run build:native`')
 
 if (problems.length) {
   console.log('Not ready to launch yet:\n')

@@ -1,59 +1,42 @@
-# Launch checklist
+# Launch checklist (web)
 
-Three places to launch, in this order: the web (needed by the other two, because the store listings and the apps point to it), then the App Store and Google Play.
+Deposit Kit launches as a website that installs like an app, with no app stores and no store fees:
+- **Phones:** "Add to Home Screen" (iPhone: Share > Add to Home Screen; Android: menu > Install app).
+- **Computers:** Chrome and Edge show an "Install" button; Safari on Mac uses File > Add to Dock.
 
-`npm run check:launch` lists any placeholders still left in the code.
+The app shows the right instructions for each browser. `npm run check:launch` lists any placeholders still left.
 
-## What's already done in this repo
-- Web app with a production server (`server/node.ts`): serves the app and `/api/timestamp`, with security headers, a per-device and a total rate limit, and a health check at `/api/health`.
-- `Dockerfile` for Dokploy (or any Docker host), and `functions/api/timestamp.ts` + `public/_headers` if you choose Cloudflare Pages instead.
-- Privacy policy (`/privacy`) and help page (`/support`), linked from the app.
-- iOS and Android projects (Capacitor 8) in `ios/` and `android/`: app id `us.varuntx.depositkit`, camera and photo-library permission text, iPhone-only, Android target API 36, icons and splash screens, native "save and share" for the PDF and zip.
-- Store icon and feature graphic in `store/`, listing text and privacy answers in `store/listing.md`.
+The iOS and Android store projects were removed on 2026-11-18 to keep this web-only. They're in git history at commit `babd67a` if ever wanted (`git checkout babd67a -- ios android capacitor.config.ts`).
 
-## 1. Decisions and details only you can provide
-- [ ] **Support email** for the privacy and help pages and both store listings. Replace `CONTACT_EMAIL` in `public/privacy.html` and `public/support.html`.
-- [ ] **Domain**, for example `depositkit.app` or a subdomain of a domain you own. Then set `VITE_TIMESTAMP_URL=https://<domain>/api/timestamp` in `.env.native`.
-- [ ] **Hosting**: Dokploy (Docker) or Cloudflare Pages.
-- [ ] **App id**: `us.varuntx.depositkit` is set in `capacitor.config.ts`, `android/app/build.gradle` and the Xcode project. It can't change after the first upload, so change it now if you want a different one.
-- [ ] **Name check**: search "Deposit Kit" in both stores and a trademark search (USPTO) before paying for anything.
+## Already done
+- Production server (`server/node.ts`): serves the app and `/api/timestamp`, with security headers, per-device and total rate limits, a health check at `/api/health`, and `/privacy` and `/support` pages.
+- `Dockerfile` for Dokploy; `functions/api/timestamp.ts` and `public/_headers` if you choose Cloudflare Pages instead.
+- Tested with a large record: 40 photos at about 5 MB each (199 MB) saved and timestamped in about 5 s. Building the PDF (17 MB) and zip (199 MB) took under 1 s, and restoring the full zip took under 10 s, on this Mac. Phones will be slower, and older phones haven't been tested.
+
+## 1. Details only you can provide
+- [ ] **Support email**: replace `CONTACT_EMAIL` in `public/privacy.html` and `public/support.html`.
+- [ ] **Domain**: a new one (about $10–15 a year), or free as a subdomain of a domain you already own (for example `deposit.varuntx.us`).
+- [ ] **Name check**: search for "Deposit Kit" (web, USPTO trademark search) before announcing it.
 - [ ] **FreeTSA terms**: read freetsa.org's terms of use for this kind of use.
 
-## 2. Accounts and money (only you can do these)
-- [ ] **Apple Developer Program**: $99 a year. Enroll as an individual (fast) or an organization (needs a D-U-N-S number).
-- [ ] **Google Play Console**: $25 once. Important: new *personal* developer accounts must run a **closed test with at least 12 testers for 14 days** before they can publish to everyone. Organization accounts are exempt. Plan around this; it's the longest wait in the whole launch.
+## 2. Deploy (I can do this once you say go)
+Dokploy (recommended, you already run it):
+- [ ] New application from this repo, build type **Dockerfile**, port **8080**.
+- [ ] Environment: `TRUST_PROXY=1` (so rate limits see real visitor IPs behind Traefik).
+- [ ] Domain with HTTPS (Let's Encrypt in Dokploy). HTTPS is required for photo fingerprints and for installing the app.
+- [ ] Health check path: `/api/health`.
 
-## 3. Tools on this Mac
-- [ ] **Xcode**: you have Xcode 26.3 in `~/Downloads`. Move it to `/Applications`, open it once, and install **iOS 26.2** under Xcode > Settings > Components (several GB). Without that component Xcode can't build for any iPhone. Then run, once:
-  `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`
-- [ ] **Android Studio** (free; includes the Java it needs). Open `android/` once so it downloads the Android SDK.
+Or Cloudflare Pages: build command `npm run build`, output directory `dist`, then add a rate-limiting rule for `/api/timestamp` in the Cloudflare dashboard.
 
-## 4. Web launch (I can do this once you give the go-ahead and the details above)
-- [ ] Deploy with Dokploy (`Dockerfile`, port 8080, env `TRUST_PROXY=1`) or Cloudflare Pages (build command `npm run build`, output `dist`).
-- [ ] Check in a real browser on the live site: the app installs to the home screen, works offline, and `/privacy` and `/support` load. (The in-app test browser here doesn't support offline service workers, so this has only been tested at the code level.)
-- [ ] Optional: a Cloudflare rate-limiting rule for `/api/timestamp` if you use Cloudflare.
-
-## 5. iOS (App Store)
-- [ ] `npm run build:native`, then `npm run ios` to open Xcode.
-- [ ] In Xcode: select your team under Signing & Capabilities (automatic signing).
-- [ ] Run it on your iPhone. Check: camera, choose from photos, timestamp appears, save PDF and zip ("Save to Files"), restore from the zip.
-- [ ] Take screenshots in the iPhone 17 Pro Max Simulator (6.9", 1320 x 2868). The list is in `store/listing.md`.
-- [ ] App Store Connect: create the app, paste the text from `store/listing.md`, App Privacy: "Data Not Collected", age rating 4+, price free.
-- [ ] Product > Archive in Xcode, upload, then submit for review with the review notes from `store/listing.md`. Review usually takes 1–3 days.
-
-## 6. Android (Google Play)
-- [ ] `npm run build:native`, then `npm run android` to open Android Studio.
-- [ ] Run it on an Android phone or emulator and do the same checks as iOS. Also check that the **Back button** moves between screens.
-- [ ] Build > Generate Signed App Bundle. Create an upload key and **back it up** (losing it is painful; Play App Signing keeps the real signing key).
-- [ ] Play Console: create the app, paste the listing, upload `store/play-icon-512.png` and `store/play-feature-graphic-1024x500.png`, screenshots, Data safety (no data collected), content rating (Everyone), privacy policy URL.
-- [ ] Closed testing track with 12+ testers for 14 days (personal accounts), then apply for production.
+## 3. Check on the live site
+- [ ] Desktop Chrome or Edge: install the app, open it from the dock or Start menu, and do a short move-in (drag photos into a room, save the PDF and zip).
+- [ ] Safari on Mac: File > Add to Dock works.
+- [ ] Turn off Wi-Fi after the first visit: the app still opens, and photos are saved and marked "waiting for a timestamp" until you're back online. (Offline support can't be tested in the in-app test browser, so this is its first real check.)
+- [ ] `/privacy` and `/support` load.
+- [ ] Phone (whenever you get to it): Add to Home Screen, take photos with the camera, save to Files, restore from the zip.
 
 ## Every later release
-1. Bump the version: iOS `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in Xcode, Android `versionName` / `versionCode` in `android/app/build.gradle`.
-2. `npm run build:native`, then archive or upload as above.
-3. Web updates go live on deploy. The app shows "Deposit Kit just updated" if needed.
+Deploy again. Open copies of the app pick up the update on their next load; if someone is mid-save at that moment, the app shows "Deposit Kit just updated. Reload".
 
-## Known gaps before or soon after launch
-- Not yet tested on a real phone (you asked to leave this for later). Store review will exercise the camera and save flow.
-- Memory with very large records (80+ photos) on older phones hasn't been measured.
-- Move-out comparison, state rules, the demand letter and reminders are not built yet. v1 launches as move-in only.
+## Not built yet
+Move-out comparison, state rules, the demand letter and reminders (see `docs/spec.md`). v1 launches as move-in only.

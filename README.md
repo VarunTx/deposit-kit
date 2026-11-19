@@ -8,7 +8,6 @@ Free web app that helps US renters prove their rental's condition at move-in and
 - Build: `npm run build` (strict TypeScript, output in `dist/`)
 - Check a real timestamp end to end: `npm run verify:tsa` (calls FreeTSA, then runs `openssl ts -verify`)
 - Production server: `npm run build`, then `node server/node.ts` (or `docker build -t deposit-kit .`)
-- Store apps (Capacitor): `npm run build:native`, then `npm run ios` / `npm run android`
 - Launching: [`docs/launch.md`](docs/launch.md) and `npm run check:launch`
 
 Deposit Kit provides templates and deadlines, not legal advice.
@@ -27,6 +26,8 @@ Phones only allow the camera flow and photo hashing (`crypto.subtle`) on HTTPS, 
 `npm run preview:phone` does the same with the production build.
 
 Installing to the home screen and working offline need a trusted certificate, so for those, use a real HTTPS address: either a tunnel (for example `npm run dev`, then `ngrok http 5173`, which makes a temporary public URL) or a deployment.
+
+On a computer, the room screen offers **Add photos** and drag-and-drop instead of the camera button, and Chrome, Edge and Safari can install the app.
 
 To check the PDF layout without a phone: `PDF_OUT=/tmp/sample.pdf npx vitest run test/render-pdf.test.ts`.
 

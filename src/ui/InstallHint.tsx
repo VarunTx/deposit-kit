@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Home, Share } from './icons.tsx'
-import { isNativeApp } from '../lib/native.ts'
+import { installPlatform } from '../lib/platform.ts'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -9,11 +9,17 @@ interface BeforeInstallPromptEvent extends Event {
 
 // Captured once at module load so the event isn't missed before this component mounts.
 let deferred: BeforeInstallPromptEvent | null = null
+let installed = false
 const listeners = new Set<() => void>()
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault()
     deferred = e as BeforeInstallPromptEvent
+    listeners.forEach((l) => l())
+  })
+  window.addEventListener('appinstalled', () => {
+    installed = true
+    deferred = null
     listeners.forEach((l) => l())
   })
 }
@@ -24,10 +30,6 @@ function isStandalone(): boolean {
   return window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
 }
 
-function isIos(): boolean {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-}
-
 function readDismissed(): boolean {
   try {
     return localStorage.getItem(DISMISS_KEY) === '1'
@@ -36,7 +38,7 @@ function readDismissed(): boolean {
   }
 }
 
-/** "Add to Home Screen" guidance. `always` ignores an earlier dismissal (used on the save screen). */
+/** "Install the app" guidance for each browser. `always` ignores an earlier dismissal (used on the save screen). */
 export function InstallHint({ always = false }: { always?: boolean }) {
   const [, rerender] = useState(0)
   const [dismissed, setDismissed] = useState(readDismissed)
@@ -47,7 +49,10 @@ export function InstallHint({ always = false }: { always?: boolean }) {
     return () => void listeners.delete(l)
   }, [])
 
-  if (isNativeApp() || isStandalone() || (dismissed && !always)) return null
+  if (installed || isStandalone() || (dismissed && !always)) return null
+
+  const kind = installPlatform(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)
+  const phone = kind === 'ios' || kind === 'android'
 
   const dismiss = () => {
     try {
@@ -61,9 +66,13 @@ export function InstallHint({ always = false }: { always?: boolean }) {
   return (
     <aside class="install-hint">
       <h2>
-        <Home size={18} /> Add Deposit Kit to your home screen
+        <Home size={18} /> {phone ? 'Add Deposit Kit to your home screen' : 'Install Deposit Kit on this computer'}
       </h2>
-      <p class="small">It opens like an app and is easier to find when you move out.</p>
+      <p class="small">
+        {phone
+          ? 'It opens like an app and is easier to find when you move out.'
+          : 'It opens in its own window, works offline, and is easy to find when you move out. Free, nothing to download from a store.'}
+      </p>
       {deferred ? (
         <button
           class="btn"
@@ -73,15 +82,28 @@ export function InstallHint({ always = false }: { always?: boolean }) {
             rerender((n) => n + 1)
           }}
         >
-          Add to home screen
+          {phone ? 'Add to home screen' : 'Install app'}
         </button>
-      ) : isIos() ? (
+      ) : kind === 'ios' ? (
         <p class="small">
-          In Safari, tap <strong>Share</strong> <Share size={15} class="inline-icon" />, then <strong>Add to Home Screen</strong>.
+          Tap <strong>Share</strong> <Share size={15} class="inline-icon" />, then <strong>Add to Home Screen</strong>.
+        </p>
+      ) : kind === 'android' ? (
+        <p class="small">
+          Open your browser’s menu (⋮) and choose <strong>Add to Home screen</strong> or <strong>Install app</strong>.
+        </p>
+      ) : kind === 'mac-safari' ? (
+        <p class="small">
+          In Safari’s menu bar, choose <strong>File</strong>, then <strong>Add to Dock</strong>.
+        </p>
+      ) : kind === 'firefox' ? (
+        <p class="small">
+          Firefox can’t install web apps, so bookmark this page instead. Or open it in Chrome, Edge or Safari to install it.
         </p>
       ) : (
         <p class="small">
-          Open your browser’s menu and choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.
+          In Chrome or Edge, click the <strong>install</strong> icon at the right end of the address bar, or open the browser’s menu
+          and choose <strong>Install Deposit Kit</strong>.
         </p>
       )}
       <p class="small muted">Even then, keep your saved files. They are your record.</p>

@@ -5,7 +5,6 @@ import type { Photo, Property } from '../lib/types.ts'
 import { buildManifest, buildZip, exportBaseName } from '../lib/export.ts'
 import { buildPdf } from '../lib/pdf.ts'
 import { InstallHint } from './InstallHint.tsx'
-import { isNativeApp, shareFileNative } from '../lib/native.ts'
 import { Archive, ArrowLeft, Check, FileText, ShieldCheck, Wifi } from './icons.tsx'
 
 interface Ready {
@@ -22,7 +21,6 @@ function canShareFile(file: File): boolean {
 }
 
 async function saveFile(file: File): Promise<boolean> {
-  if (isNativeApp()) return shareFileNative(file)
   if (canShareFile(file)) {
     try {
       await navigator.share({ files: [file], title: file.name })

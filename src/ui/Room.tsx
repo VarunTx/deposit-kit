@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Session } from '../lib/session.ts'
 import type { Photo, Property, Room } from '../lib/types.ts'
 import { useObjectUrl } from './feedback.tsx'
@@ -18,6 +18,7 @@ export function RoomView({
   roomId,
   version,
   onBack,
+  onMissing,
   onPhotoAdded,
   onSave,
 }: {
@@ -26,6 +27,7 @@ export function RoomView({
   roomId: string
   version: number
   onBack: () => void
+  onMissing: () => void
   onPhotoAdded: () => void
   onSave: () => void
 }) {
@@ -33,30 +35,40 @@ export function RoomView({
   const [photos, setPhotos] = useState<Photo[]>([])
   const [busy, setBusy] = useState(0)
   const [problem, setProblem] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const dragDepth = useRef(0)
   const cameraRef = useRef<HTMLInputElement>(null)
   const libraryRef = useRef<HTMLInputElement>(null)
+  // Phones and tablets get "Take a photo"; computers get "Add photos" and drag-and-drop.
+  const touch = useMemo(() => window.matchMedia?.('(pointer: coarse)').matches ?? false, [])
 
   useEffect(() => {
     session.store.listRooms(property.id).then((rooms) => {
       const found = rooms.find((r) => r.id === roomId) ?? null
       // A room that no longer exists (deleted, or reached with Back/Forward after a restore).
-      if (!found) onBack()
+      if (!found) onMissing()
       else setRoom(found)
     })
     session.store.listPhotos(roomId).then(setPhotos)
   }, [session, property.id, roomId, version])
 
-  const onFiles = async (input: HTMLInputElement) => {
+  const onFiles = (input: HTMLInputElement) => {
     const files = Array.from(input.files ?? [])
     input.value = '' // let the same file be picked again
-    if (!room || files.length === 0) return
-    setProblem(null)
+    void addFiles(files)
+  }
+
+  const addFiles = async (all: File[]) => {
+    const files = all.filter((f) => !f.type || f.type.startsWith('image/'))
+    const skipped = all.length - files.length
+    if (!room || all.length === 0) return
+    setProblem(skipped ? `Skipped ${skipped} file${skipped === 1 ? '' : 's'} that ${skipped === 1 ? 'isn’t a photo' : 'aren’t photos'}.` : null)
+    if (files.length === 0) return
     // Ask the browser not to clear our storage under pressure. Harmless if refused.
     navigator.storage?.persist?.().catch(() => {})
     setBusy((n) => n + files.length)
     for (const file of files) {
       try {
-        if (file.type && !file.type.startsWith('image/')) throw new Error('not an image')
         await session.addPhoto(room, file)
         onPhotoAdded()
       } catch (e) {
@@ -76,8 +88,42 @@ export function RoomView({
 
   const stamped = photos.filter((p) => p.stamp.status === 'stamped').length
 
+  const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+
   return (
-    <div class="stack">
+    <div
+      class="stack"
+      onDragEnter={(e) => {
+        if (!hasFiles(e)) return
+        e.preventDefault()
+        dragDepth.current++
+        setDragging(true)
+      }}
+      onDragOver={(e) => {
+        if (!hasFiles(e)) return
+        e.preventDefault()
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+      }}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1)
+        if (dragDepth.current === 0) setDragging(false)
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return
+        e.preventDefault()
+        dragDepth.current = 0
+        setDragging(false)
+        void addFiles(Array.from(e.dataTransfer?.files ?? []))
+      }}
+    >
+      {dragging && (
+        <div class="drop-overlay" aria-hidden="true">
+          <div>
+            <Images size={40} />
+            <p>Drop photos to add them to {room.name}</p>
+          </div>
+        </div>
+      )}
       <button class="back" onClick={onBack}>
         <ArrowLeft size={18} /> All rooms
       </button>
@@ -106,13 +152,24 @@ export function RoomView({
         </ul>
       </details>
 
-      <div class="capture">
-        <button class="btn primary big" onClick={() => cameraRef.current?.click()} disabled={busy > 0}>
-          <Camera size={22} /> Take a photo
-        </button>
-        <button class="btn big" onClick={() => libraryRef.current?.click()} disabled={busy > 0}>
-          <Images size={22} /> Choose from photos
-        </button>
+      <div class={`capture ${touch ? '' : 'desktop'}`}>
+        {touch ? (
+          <>
+            <button class="btn primary big" onClick={() => cameraRef.current?.click()} disabled={busy > 0}>
+              <Camera size={22} /> Take a photo
+            </button>
+            <button class="btn big" onClick={() => libraryRef.current?.click()} disabled={busy > 0}>
+              <Images size={22} /> Choose from photos
+            </button>
+          </>
+        ) : (
+          <>
+            <button class="btn primary big" onClick={() => libraryRef.current?.click()} disabled={busy > 0}>
+              <Images size={22} /> Add photos
+            </button>
+            <p class="muted small center drop-hint">or drag photos here from your computer. You can pick several at once.</p>
+          </>
+        )}
         <input
           ref={cameraRef}
           class="visually-hidden"
@@ -148,7 +205,7 @@ export function RoomView({
       {photos.length === 0 ? (
         <div class="empty-card">
           <Camera size={28} />
-          <p>No photos in this room yet. Your first photo is one tap away.</p>
+          <p>{touch ? 'No photos in this room yet. Your first photo is one tap away.' : 'No photos in this room yet. Drag photos here, or click Add photos.'}</p>
         </div>
       ) : (
         <ul class="photo-list">

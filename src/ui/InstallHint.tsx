@@ -70,8 +70,8 @@ export function InstallHint({ always = false }: { always?: boolean }) {
       </h2>
       <p class="small">
         {phone
-          ? 'It opens like an app and is easier to find when you move out.'
-          : 'It opens in its own window, works offline, and is easy to find when you move out. Free, nothing to download from a store.'}
+          ? 'It opens like an app and is easy to find when you need your record again.'
+          : 'It opens in its own window, works offline, and is easy to find when you need your record again. Free, nothing to download from a store.'}
       </p>
       {deferred ? (
         <button

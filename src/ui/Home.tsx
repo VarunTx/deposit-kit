@@ -4,9 +4,8 @@ import { needsExport } from '../lib/session.ts'
 import type { Photo, Property, Room } from '../lib/types.ts'
 import { stateName } from '../lib/states.ts'
 import { InstallHint } from './InstallHint.tsx'
-import { RestoreButton } from './Restore.tsx'
 import { useObjectUrl } from './feedback.tsx'
-import { Camera, Check, ChevronRight, Download, Pencil, Plus, RoomIcon, ShieldCheck, Wifi } from './icons.tsx'
+import { ArrowLeft, Camera, Check, ChevronRight, Download, Pencil, Plus, RoomIcon, ShieldCheck, Trash, Wifi } from './icons.tsx'
 
 export const ROOM_SUGGESTIONS = ['Kitchen', 'Bathroom', 'Bedroom', 'Living room', 'Entry']
 
@@ -17,6 +16,7 @@ export function HomeView({
   onOpenRoom,
   onEdit,
   onSave,
+  onBack,
   promptSave,
   onDismissPrompt,
 }: {
@@ -26,6 +26,7 @@ export function HomeView({
   onOpenRoom: (id: string) => void
   onEdit: () => void
   onSave: () => void
+  onBack: () => void
   promptSave: boolean
   onDismissPrompt: () => void
 }) {
@@ -56,13 +57,14 @@ export function HomeView({
   }
 
   const stamped = photos.filter((p) => p.stamp.status === 'stamped').length
-  const failed = photos.filter((p) => p.stamp.status === 'failed').length
-  const pending = photos.filter((p) => p.stamp.status === 'pending').length
   const unsaved = needsExport(property, photos.length)
   const roomsWithPhotos = rooms.filter((r) => photos.some((p) => p.roomId === r.id)).length
 
   return (
     <div class="stack">
+      <button class="back" onClick={onBack}>
+        <ArrowLeft size={18} /> All records
+      </button>
       <section class="card summary">
         <div class="summary-head">
           <div>
@@ -88,39 +90,12 @@ export function HomeView({
             </p>
           </div>
         </div>
-        {loaded && photos.length > 0 && (
-          <p class={`status-line ${unsaved ? 'warn' : 'ok'}`}>
-            {unsaved ? (
-              <>
-                <Download size={16} /> Not saved yet. Save your record before you close the app.
-              </>
-            ) : (
-              <>
-                <Check size={16} /> Saved {formatWhen(property.lastExportAt)}. Nice work.
-              </>
-            )}
-          </p>
-        )}
+        {loaded && <SavedLine property={property} photos={photos.length} unsaved={unsaved} />}
       </section>
 
       {promptSave && unsaved && <SavePrompt onSave={onSave} onLater={onDismissPrompt} />}
 
-      {failed > 0 && (
-        <div class="notice">
-          <p class="notice-title">
-            <Wifi size={18} /> {failed} photo{failed === 1 ? ' is' : 's are'} waiting for a timestamp
-          </p>
-          <p>Your photos are saved. The timestamp needs an internet connection.</p>
-          <button class="btn" onClick={() => session.stampMissing(property.id)}>
-            Try again now
-          </button>
-        </div>
-      )}
-      {pending > 0 && failed === 0 && (
-        <p class="muted small pending-line">
-          <span class="spinner" aria-hidden="true" /> Adding timestamps to {pending} photo{pending === 1 ? '' : 's'}…
-        </p>
-      )}
+      <StampNotices session={session} property={property} photos={photos} />
 
       <section class="section">
         <div class="section-head">
@@ -192,12 +167,88 @@ export function HomeView({
 
       <InstallHint />
 
-      <section class="section restore-home">
-        <h2>Restore a saved record</h2>
-        <p class="muted small">Switched phones, or lost your photos? Load the zip file you saved. It replaces what’s on this device.</p>
-        <RestoreButton session={session} existingPhotos={photos.length} unsaved={unsaved} variant="home" />
-      </section>
+      <DeleteRecord session={session} property={property} photos={photos.length} unsaved={unsaved} onDeleted={onBack} />
     </div>
+  )
+}
+
+/** "Saved" or "Not saved yet" under a record's summary. */
+export function SavedLine({ property, photos, unsaved }: { property: Property; photos: number; unsaved: boolean }) {
+  if (photos === 0) return null
+  return (
+    <p class={`status-line ${unsaved ? 'warn' : 'ok'}`}>
+      {unsaved ? (
+        <>
+          <Download size={16} /> Not saved yet. Save your record before you close the app.
+        </>
+      ) : (
+        <>
+          <Check size={16} /> Saved {formatWhen(property.lastExportAt)}. Nice work.
+        </>
+      )}
+    </p>
+  )
+}
+
+/** Timestamps still running, or waiting for a connection. */
+export function StampNotices({ session, property, photos }: { session: Session; property: Property; photos: Photo[] }) {
+  const failed = photos.filter((p) => p.stamp.status === 'failed').length
+  const pending = photos.filter((p) => p.stamp.status === 'pending').length
+  if (failed > 0) {
+    return (
+      <div class="notice">
+        <p class="notice-title">
+          <Wifi size={18} /> {failed} photo{failed === 1 ? ' is' : 's are'} waiting for a timestamp
+        </p>
+        <p>Your photos are saved. The timestamp needs an internet connection.</p>
+        <button class="btn" onClick={() => session.stampMissing(property.id)}>
+          Try again now
+        </button>
+      </div>
+    )
+  }
+  if (pending > 0) {
+    return (
+      <p class="muted small pending-line">
+        <span class="spinner" aria-hidden="true" /> Adding timestamps to {pending} photo{pending === 1 ? '' : 's'}…
+      </p>
+    )
+  }
+  return null
+}
+
+export function DeleteRecord({
+  session,
+  property,
+  photos,
+  unsaved,
+  onDeleted,
+}: {
+  session: Session
+  property: Property
+  photos: number
+  unsaved: boolean
+  onDeleted: () => void
+}) {
+  return (
+    <button
+      class="btn danger-ghost"
+      onClick={async () => {
+        const what = `${property.label} and its ${photos} photo${photos === 1 ? '' : 's'}`
+        const msg =
+          photos === 0
+            ? `Delete ${property.label} from this device?`
+            : unsaved
+              ? `Delete ${what} from this device? Some of it isn’t in a saved file yet, so it will be lost. This can’t be undone.`
+              : `Delete ${what} from this device? Your saved files aren’t affected. This can’t be undone.`
+        if (confirm(msg)) {
+          await session.deleteRecord(property)
+          onDeleted()
+        }
+      }}
+    >
+      <Trash size={18} /> Delete this record
+    </button>
   )
 }
 
@@ -229,12 +280,12 @@ function RoomCard({ room, photos, onOpen }: { room: Room; photos: Photo[]; onOpe
   )
 }
 
-function Thumb({ blob }: { blob: Blob | null }) {
+export function Thumb({ blob }: { blob: Blob | null }) {
   const url = useObjectUrl(blob)
   return url ? <img class="thumb" src={url} alt="" /> : <span class="thumb blank" />
 }
 
-function ProgressRing({ value, total }: { value: number; total: number }) {
+export function ProgressRing({ value, total }: { value: number; total: number }) {
   const pct = total ? value / total : 0
   const r = 26
   const c = 2 * Math.PI * r
@@ -249,7 +300,7 @@ function ProgressRing({ value, total }: { value: number; total: number }) {
   )
 }
 
-function SavePrompt({ onSave, onLater }: { onSave: () => void; onLater: () => void }) {
+export function SavePrompt({ onSave, onLater }: { onSave: () => void; onLater: () => void }) {
   const primary = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     primary.current?.focus()
@@ -285,7 +336,7 @@ export function formatYmd(ymd: string): string {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function formatWhen(iso: string | undefined): string {
+export function formatWhen(iso: string | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)
   const sameDay = d.toDateString() === new Date().toDateString()
@@ -293,7 +344,7 @@ function formatWhen(iso: string | undefined): string {
   return sameDay ? `today at ${time}` : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${time}`
 }
 
-function stampSummary(stamped: number, total: number): string {
+export function stampSummary(stamped: number, total: number): string {
   if (total === 0) return 'No photos yet'
   if (stamped === total) return total === 1 ? 'Your photo is timestamped' : `All ${total} photos timestamped`
   return `${stamped} of ${total} photos timestamped`

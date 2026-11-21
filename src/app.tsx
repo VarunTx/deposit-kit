@@ -1,31 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import './app.css'
-import { Store, newId } from './lib/db.ts'
+import { Store } from './lib/db.ts'
 import { Session } from './lib/session.ts'
-import type { Property } from './lib/types.ts'
-import { Intro, SetupForm } from './ui/Setup.tsx'
+import type { Property, RecordKind } from './lib/types.ts'
+import { CarSetupForm, Intro, SetupForm, type CarFields, type HomeFields } from './ui/Setup.tsx'
 import { HomeView } from './ui/Home.tsx'
+import { CarView } from './ui/Car.tsx'
+import { RecordsView } from './ui/Records.tsx'
 import { RoomView } from './ui/Room.tsx'
 import { SaveView } from './ui/Save.tsx'
 import { Toasts, toast } from './ui/feedback.tsx'
 import { Lock, ShieldCheck } from './ui/icons.tsx'
 import { preloadPdf } from './lib/pdf.ts'
 
-type Screen = { name: 'home' } | { name: 'setup' } | { name: 'edit' } | { name: 'room'; roomId: string } | { name: 'save' }
+// 'home' is the list of records (the app's start screen); every other screen belongs to one record.
+type Screen =
+  | { name: 'home' }
+  | { name: 'setup'; kind: RecordKind }
+  | { name: 'record'; id: string }
+  | { name: 'edit'; id: string }
+  | { name: 'room'; id: string; roomId: string }
+  | { name: 'save'; id: string }
 
 function stateScreen(state: unknown): Screen {
   const s = (state as { dk?: Screen } | null)?.dk
-  return s && typeof s.name === 'string' ? s : { name: 'home' }
+  if (!s || typeof s.name !== 'string') return { name: 'home' }
+  // History entries from before records had ids (one record per device) can't be resumed.
+  if (s.name !== 'home' && s.name !== 'setup' && typeof (s as { id?: unknown }).id !== 'string') return { name: 'home' }
+  return s
 }
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [property, setProperty] = useState<Property | null | undefined>(undefined)
-  // After a reload, reopen the room you were in, but nothing else (a stale Save or Edit screen would confuse).
+  const [records, setRecords] = useState<Property[] | undefined>(undefined)
+  // After a reload, reopen the record or room you were in, but nothing else (a stale Save or Edit screen would confuse).
   const [screen, setScreen] = useState<Screen>(() => {
     const s = stateScreen(history.state)
-    return s.name === 'room' ? s : { name: 'home' }
+    return s.name === 'room' || s.name === 'record' ? s : { name: 'home' }
   })
   const [version, setVersion] = useState(0)
   const [promptSave, setPromptSave] = useState(false)
@@ -39,7 +51,7 @@ export function App() {
     const prev = current.current
     if (prev.name === 'room' && !(next.name === 'room' && next.roomId === prev.roomId)) {
       // Leaving a room where photos were added: suggest saving (unless heading to Save already).
-      setPromptSave(addedInRoom.current > 0 && next.name === 'home')
+      setPromptSave(addedInRoom.current > 0 && next.name === 'record')
       addedInRoom.current = 0
     }
     current.current = next
@@ -49,11 +61,15 @@ export function App() {
     history.pushState({ dk: next }, '')
     show(next)
   }, [show])
-  /** Go home without adding a history entry (used when the current screen no longer exists). */
-  const home = useCallback(() => {
-    history.replaceState({ dk: { name: 'home' } }, '')
-    show({ name: 'home' })
-  }, [show])
+  /** Replace the current screen without adding a history entry (a finished form, or a screen that no longer exists). */
+  const replace = useCallback(
+    (next: Screen) => {
+      history.replaceState({ dk: next }, '')
+      show(next)
+    },
+    [show],
+  )
+  const home = useCallback(() => replace({ name: 'home' }), [replace])
   const back = useCallback(() => {
     if (stateScreen(history.state).name !== 'home') history.back()
     else show({ name: 'home' })
@@ -80,20 +96,19 @@ export function App() {
       .catch(() => setError('This browser won’t let Deposit Kit save data. Try turning off private browsing, or use Safari or Chrome.'))
   }, [bump])
 
-  // v1 keeps one move-in record per device.
   useEffect(() => {
     if (!session) return
-    session.store.listProperties().then((all) => setProperty(all[0] ?? null))
+    session.store.listProperties().then(setRecords)
   }, [session, version])
 
   // Finish any timestamps that didn't complete last time, and retry when the connection comes back.
   useEffect(() => {
-    if (!session || !property) return
-    session.stampMissing(property.id)
-    const online = () => session.stampMissing(property.id)
+    if (!session) return
+    void session.stampAll()
+    const online = () => void session.stampAll()
     window.addEventListener('online', online)
     return () => window.removeEventListener('online', online)
-  }, [session, property?.id])
+  }, [session])
 
   useEffect(() => window.scrollTo(0, 0), [screen])
 
@@ -105,33 +120,69 @@ export function App() {
     return () => clearTimeout(t)
   }, [session])
 
-  const saveProperty = useCallback(
-    async (fields: Pick<Property, 'label' | 'moveInDate' | 'state'>) => {
+  const property = 'id' in screen ? records?.find((r) => r.id === screen.id) : undefined
+
+  // A record that no longer exists (deleted, or reached with Back/Forward): go to the list.
+  // Check storage, not just the list in memory, which can lag just after a record is created or restored.
+  useEffect(() => {
+    if (!session || !records || !('id' in screen) || records.some((r) => r.id === screen.id)) return
+    let cancelled = false
+    session.store.getProperty(screen.id).then((p) => !cancelled && !p && home())
+    return () => {
+      cancelled = true
+    }
+  }, [session, records, screen, home])
+
+  const createHome = useCallback(
+    async (fields: HomeFields) => {
       if (!session) return
+      const p = await session.addHome(fields)
+      replace({ name: 'record', id: p.id })
+    },
+    [session, replace],
+  )
+  const createCar = useCallback(
+    async (fields: CarFields) => {
+      if (!session) return
+      const p = await session.addCar(fields)
+      replace({ name: 'record', id: p.id })
+    },
+    [session, replace],
+  )
+  const saveEdit = useCallback(
+    async (fields: Partial<Property>) => {
+      if (!session || !property) return
       const now = new Date().toISOString()
-      if (property) await session.store.updateProperty(property.id, (p) => ({ ...p, ...fields, lastChangeAt: now }))
-      else await session.store.saveProperty({ id: newId(), createdAt: now, ...fields })
+      await session.store.updateProperty(property.id, (p) => ({ ...p, ...fields, lastChangeAt: now }))
       bump()
       back()
     },
     [session, property, bump, back],
   )
 
-  const screenKey = !property ? (screen.name === 'setup' ? 'setup' : 'intro') : screen.name === 'room' ? `room-${screen.roomId}` : screen.name
+  const screenKey = screen.name === 'room' ? `room-${screen.roomId}` : 'id' in screen ? `${screen.name}-${screen.id}` : screen.name
 
   const body = useMemo(() => {
     if (error) return <p class="notice warn">{error}</p>
-    if (!session || property === undefined) return <div class="loading" aria-label="Loading" />
-    if (!property) {
-      return screen.name === 'setup' ? (
-        <SetupForm onSave={saveProperty} onCancel={back} />
-      ) : (
-        <Intro onStart={() => go({ name: 'setup' })} session={session} />
-      )
+    if (!session || records === undefined) return <div class="loading" aria-label="Loading" />
+    if (screen.name === 'setup') {
+      return screen.kind === 'car' ? <CarSetupForm onSave={createCar} onCancel={back} /> : <SetupForm onSave={createHome} onCancel={back} />
     }
+    const start = (kind: RecordKind) => go({ name: 'setup', kind })
+    const open = (id: string) => go({ name: 'record', id })
+    if (screen.name !== 'home' && !property) return <div class="loading" aria-label="Loading" />
+    if (screen.name === 'home' || !property) {
+      if (records.length === 0) return <Intro onStart={start} session={session} onRestored={open} />
+      return <RecordsView session={session} records={records} version={version} onOpen={open} onStart={start} />
+    }
+    const car = property.kind === 'car'
     switch (screen.name) {
       case 'edit':
-        return <SetupForm initial={property} onSave={saveProperty} onCancel={back} />
+        return car ? (
+          <CarSetupForm initial={property} onSave={saveEdit} onCancel={back} />
+        ) : (
+          <SetupForm initial={property} onSave={saveEdit} onCancel={back} />
+        )
       case 'room':
         return (
           <RoomView
@@ -140,41 +191,51 @@ export function App() {
             roomId={screen.roomId}
             version={version}
             onBack={back}
-            onMissing={home}
+            onMissing={() => replace({ name: 'record', id: property.id })}
             onPhotoAdded={() => (addedInRoom.current += 1)}
-            onSave={() => go({ name: 'save' })}
+            onSave={() => go({ name: 'save', id: property.id })}
           />
         )
       case 'save':
         return <SaveView session={session} property={property} onBack={back} />
-      default:
-        return (
-          <HomeView
-            session={session}
-            property={property}
-            version={version}
-            onOpenRoom={(roomId) => go({ name: 'room', roomId })}
-            onEdit={() => go({ name: 'edit' })}
-            onSave={() => {
-              setPromptSave(false)
-              go({ name: 'save' })
-            }}
-            promptSave={promptSave}
-            onDismissPrompt={() => setPromptSave(false)}
-          />
+      default: {
+        const common = {
+          session,
+          property,
+          version,
+          onOpenRoom: (roomId: string) => go({ name: 'room', id: property.id, roomId }),
+          onEdit: () => go({ name: 'edit', id: property.id }),
+          onBack: back,
+          onSave: () => {
+            setPromptSave(false)
+            go({ name: 'save', id: property.id })
+          },
+        }
+        return car ? (
+          <CarView {...common} />
+        ) : (
+          <HomeView {...common} promptSave={promptSave} onDismissPrompt={() => setPromptSave(false)} />
         )
+      }
     }
-  }, [error, session, property, screen, version, saveProperty, promptSave, go, back, home])
+  }, [error, session, records, property, screen, version, createHome, createCar, saveEdit, promptSave, go, back, replace])
 
   return (
     <div class="page">
       <header class="topbar">
-        <span class="brand">
+        <a
+          class="brand"
+          href="/"
+          onClick={(e) => {
+            e.preventDefault()
+            if (screen.name !== 'home') go({ name: 'home' })
+          }}
+        >
           <span class="brand-mark">
             <ShieldCheck size={20} />
           </span>
           Deposit Kit
-        </span>
+        </a>
         <span class="private-pill" title="Your photos are stored only on this device">
           <Lock size={14} /> Private to this device
         </span>
@@ -186,7 +247,7 @@ export function App() {
         <p class="footer-trust">
           <Lock size={14} /> No account. No tracking. Deposit Kit never uploads your photos.
         </p>
-        <p>Deposit Kit gives you templates and deadlines, not legal advice. Check your state’s law or a tenant rights group if you’re unsure.</p>
+        <p>Deposit Kit gives you templates and deadlines, not legal advice. Check your rental agreement and your state’s law if you’re unsure.</p>
         <p class="footer-links">
           <a href="/support.html">Help</a> · <a href="/privacy.html">Privacy</a>
         </p>

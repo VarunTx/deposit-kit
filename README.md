@@ -2,7 +2,7 @@
 
 Live at https://depositkit.varuntx.us
 
-Free web app that helps US renters prove their rental's condition at move-in and get their security deposit back at move-out. Photos stay on the user's device.
+Free web app that helps US renters prove the condition of a rented home (at move-in) or a rental car (at pickup and return). Photos stay on the user's device.
 
 - Spec and decisions: [`docs/spec.md`](docs/spec.md)
 - Develop: `npm install`, then `npm run dev` (serves the app and the timestamp endpoint together)
@@ -36,12 +36,13 @@ To check the PDF layout without a phone: `PDF_OUT=/tmp/sample.pdf npx vitest run
 
 ## Move-in evidence flow (v1)
 
-1. The user adds their home (address label, move-in date, state), then rooms.
+1. The user starts a record: a home (address label, move-in date, state, then rooms they name) or a rental car (car, plate, company, pickup date and place). A device can hold any number of records.
 2. In each room they take or pick photos (`<input type="file" accept="image/*" capture="environment">`) and add an optional note.
 3. For each photo the browser hashes the **original bytes** with SHA-256, keeps the original, and makes a smaller JPEG (longest side 2000px, quality 0.85) for the screen and the PDF.
 4. The photo is saved to IndexedDB first, then the hash (never the photo) goes to `/api/timestamp`, which asks FreeTSA for an RFC 3161 token. If that fails, the photo stays "not yet timestamped" and is retried on "Try again", on reload, and when the device comes back online.
-5. "Save my record" builds a PDF report and a zip (original photos, `.tsr` tokens, `manifest.json`, README, FreeTSA certificates). The app prompts for this after each room visit with new photos, because iOS can delete web storage after 7 days without use.
-6. "I have a saved record" (intro) or "Restore from a saved file" (home) loads that zip back, for a new phone or after the phone cleared the app's data. Each photo is re-hashed and each `.tsr` token is checked against it, and the times come from the signed tokens, not from the editable manifest. A photo whose token doesn't match is kept and gets a fresh timestamp. The restore replaces the device's record in one transaction, so a bad file changes nothing.
+5. For a rental car, the "rooms" are a fixed shot list (`src/lib/car.ts`): front, both sides, back, glass, wheels, interior, trunk, mileage and fuel, and damage close-ups, plus keys and receipt at return. The car screen walks through them one at a time ("Take photo: Front", then the next), and at return shows the pickup photo of the same spot to match the angle. Return photos matter most, because damage charges usually arrive after the car is handed back.
+6. "Save my record" builds a PDF report and a zip (for a car, the PDF puts each spot's pickup and return photos side by side; the zip has original photos, `.tsr` tokens, `manifest.json`, README, FreeTSA certificates). The app prompts for this after each room visit with new photos, because iOS can delete web storage after 7 days without use.
+7. "I have a saved record" (intro) or "Restore a saved record" (records list) loads that zip back, for a new phone or after the phone cleared the app's data. Each photo is re-hashed and each `.tsr` token is checked against it, and the times come from the signed tokens, not from the editable manifest. A photo whose token doesn't match is kept and gets a fresh timestamp. The restored record is added next to the others in one transaction, so a bad file changes nothing. Manifest version 2 added `kind`, `car`, and each room's `phase` and `slot`; version 1 files restore as homes.
 
 Why the original is kept as well as the small copy: the timestamp covers the original's hash, so the original must be in the export or the proof can't be checked.
 
@@ -50,7 +51,8 @@ Why the original is kept as well as the small copy: the timestamp covers the ori
 | Path | What it does |
 | --- | --- |
 | `src/lib/tsp.ts` | Builds the RFC 3161 request and reads the response (DER). Shared by browser and server. |
-| `src/lib/db.ts` | Small IndexedDB wrapper (properties, rooms, photos). |
+| `src/lib/db.ts` | Small IndexedDB wrapper (records, rooms or car spots, photos). The record store is still called `properties`. |
+| `src/lib/car.ts` | Rental car shot list, labels and helpers. |
 | `src/lib/session.ts` | Add photo → hash → save → timestamp queue with retry. |
 | `src/lib/export.ts`, `src/lib/pdf.ts` | Manifest, zip and PDF. |
 | `src/lib/restore.ts` | Reads a saved zip back into records, checking hashes and tokens. |

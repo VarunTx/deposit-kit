@@ -125,7 +125,7 @@ describe('Session.restore', () => {
   })
   afterEach(() => store.close())
 
-  it('replaces the device record, and exporting again gives the same evidence', async () => {
+  it('adds the restored record next to the ones already here, and exporting again gives the same evidence', async () => {
     // Something already on the device.
     const old: Property = { ...property, id: 'old', label: 'Old place' }
     await store.saveProperty(old)
@@ -138,9 +138,12 @@ describe('Session.restore', () => {
     expect(report).toMatchObject({ photos: 2, stamped: 1 })
     await session.idle()
 
-    const [p] = await store.listProperties()
+    const p = (await store.getProperty(report.propertyId))!
     expect(p.label).toBe('Apt 4B, 120 Main St')
-    expect(await store.getProperty('old')).toBeUndefined()
+    expect(p.kind).toBe('home')
+    // Nothing already on the device is touched.
+    expect(await store.getProperty('old')).toMatchObject({ label: 'Old place' })
+    expect((await store.listRooms('old')).map((r) => r.name)).toEqual(['Garage'])
     const restoredRooms = await store.listRooms(p.id)
     expect(restoredRooms.map((r) => r.name)).toEqual(['Kitchen', 'Bathroom'])
     // One photo still needs a timestamp, so it isn't counted as fully saved.

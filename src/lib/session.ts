@@ -7,7 +7,8 @@ import { sha256Hex } from './hash.ts'
 import { makeDisplayImage, type DisplayImage } from './image.ts'
 import { readBackup, type RestoreReport } from './restore.ts'
 import { fetchTimestamp, stampFailed, stampSucceeded } from './stamp.ts'
-import type { Photo, Property, Room } from './types.ts'
+import { shotsFor, slotOrder } from './car.ts'
+import type { CarDetails, Phase, Photo, Property, Room } from './types.ts'
 
 export interface SessionDeps {
   makeDisplay?: (file: Blob) => Promise<DisplayImage | null>
@@ -38,6 +39,43 @@ export class Session {
   async touch(propertyId: string): Promise<void> {
     const at = this.now().toISOString()
     await this.store.updateProperty(propertyId, (p) => ({ ...p, lastChangeAt: at }))
+  }
+
+  /** Create a home record. */
+  async addHome(fields: Pick<Property, 'label' | 'moveInDate' | 'state'>): Promise<Property> {
+    const property: Property = { id: newId(), kind: 'home', createdAt: this.now().toISOString(), ...fields }
+    await this.store.saveProperty(property)
+    this.onChange()
+    return property
+  }
+
+  /** Create a rental car record with the pickup shot list ready to fill. */
+  async addCar(fields: Pick<Property, 'label' | 'moveInDate'> & { car: CarDetails }): Promise<Property> {
+    const property: Property = { id: newId(), kind: 'car', state: '', createdAt: this.now().toISOString(), ...fields }
+    await this.store.saveProperty(property)
+    await this.addPhase(property, 'pickup')
+    this.onChange()
+    return property
+  }
+
+  /** Add the shot list for a visit (pickup or return). Spots that already exist are kept. */
+  async addPhase(property: Property, phase: Phase): Promise<Room[]> {
+    const existing = (await this.store.listRooms(property.id)).filter((r) => r.phase === phase)
+    const at = this.now().toISOString()
+    const added: Room[] = shotsFor(phase)
+      .filter((s) => !existing.some((r) => r.slot === s.slot))
+      .map((s) => ({ id: newId(), propertyId: property.id, name: s.name, order: slotOrder(phase, s.slot), createdAt: at, phase, slot: s.slot }))
+    if (added.length) {
+      await this.store.saveRooms(added)
+      await this.touch(property.id)
+      this.onChange()
+    }
+    return [...existing, ...added].sort((a, b) => a.order - b.order)
+  }
+
+  async deleteRecord(property: Property): Promise<void> {
+    await this.store.deleteProperty(property.id)
+    this.onChange()
   }
 
   async addRoom(property: Property, name: string): Promise<Room> {
@@ -146,17 +184,22 @@ export class Session {
     this.onChange()
   }
 
-  /** Replace this device's record with one from a saved zip, then timestamp anything that needs it. */
-  async restore(zip: Blob, onProgress?: (done: number, total: number) => void): Promise<RestoreReport> {
+  /** Timestamp every photo on this device that doesn't have one yet. */
+  async stampAll(): Promise<void> {
+    for (const p of await this.store.listProperties()) await this.stampMissing(p.id)
+  }
+
+  /** Add a record from a saved zip next to the ones already here, then timestamp anything that needs it. */
+  async restore(zip: Blob, onProgress?: (done: number, total: number) => void): Promise<RestoreReport & { propertyId: string }> {
     const plan = await readBackup(new Uint8Array(await zip.arrayBuffer()), {
       makeDisplay: this.deps.makeDisplay ?? makeDisplayImage,
       now: this.deps.now,
       onProgress,
     })
-    await this.store.replaceAll(plan.property, plan.rooms, plan.photos)
+    await this.store.addRecord(plan.property, plan.rooms, plan.photos)
     this.onChange()
     void this.stampMissing(plan.property.id)
-    return plan.report
+    return { ...plan.report, propertyId: plan.property.id }
   }
 
   async markExported(propertyId: string): Promise<void> {

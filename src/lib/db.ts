@@ -1,5 +1,5 @@
 // A small promise wrapper over IndexedDB. No dependency: the app needs three
-// stores and a handful of calls, which is less code than learning a library's API.
+// stores (records, rooms or car spots, photos) and a handful of calls, which is less code than learning a library's API.
 // On-device storage is a cache; the export is the record (see docs/spec.md).
 
 import type { Photo, Property, Room } from './types.ts'
@@ -96,21 +96,25 @@ export class Store {
     return this.update<Property>('properties', id, patch)
   }
 
-  /**
-   * Replace everything on this device with a restored record, in one transaction:
-   * either the whole restore lands or nothing changes.
-   */
-  async replaceAll(property: Property, rooms: Room[], photos: Photo[]): Promise<void> {
+  /** Add a restored record with its rooms and photos in one transaction: either all of it lands or nothing changes. */
+  async addRecord(property: Property, rooms: Room[], photos: Photo[]): Promise<void> {
     const tx = this.db.transaction(['properties', 'rooms', 'photos'], 'readwrite')
-    const ps = tx.objectStore('properties')
+    tx.objectStore('properties').put(property)
     const rs = tx.objectStore('rooms')
     const phs = tx.objectStore('photos')
-    ps.clear()
-    rs.clear()
-    phs.clear()
-    ps.put(property)
     for (const r of rooms) rs.put(r)
     for (const p of photos) phs.put(p)
+    await done(tx)
+  }
+
+  /** Delete a record with all its rooms and photos, in one transaction. */
+  async deleteProperty(id: string): Promise<void> {
+    const tx = this.db.transaction(['properties', 'rooms', 'photos'], 'readwrite')
+    tx.objectStore('properties').delete(id)
+    const rooms = tx.objectStore('rooms')
+    for (const k of await req(rooms.index('propertyId').getAllKeys(id))) rooms.delete(k)
+    const photos = tx.objectStore('photos')
+    for (const k of await req(photos.index('propertyId').getAllKeys(id))) photos.delete(k)
     await done(tx)
   }
 
@@ -121,6 +125,11 @@ export class Store {
   }
   saveRoom(r: Room) {
     return this.put('rooms', r)
+  }
+  async saveRooms(rs: Room[]): Promise<void> {
+    const tx = this.db.transaction('rooms', 'readwrite')
+    for (const r of rs) tx.objectStore('rooms').put(r)
+    await done(tx)
   }
   /** Deletes the room and its photos in one transaction. */
   async deleteRoom(id: string): Promise<void> {

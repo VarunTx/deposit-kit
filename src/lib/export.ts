@@ -6,12 +6,14 @@
 // us add one photo at a time instead of holding two copies of every photo in memory.
 
 import { Zip, ZipPassThrough, ZipDeflate, strToU8 } from 'fflate'
-import type { Photo, Property, Room } from './types.ts'
+import { PHASE_NAME } from './car.ts'
+import type { CarDetails, Phase, Photo, Property, RecordKind, Room } from './types.ts'
 import freetsaCa from '../assets/tsa/freetsa-cacert.pem?raw'
 import freetsaTsa from '../assets/tsa/freetsa-tsa.crt?raw'
 
 export const MANIFEST_FORMAT = 'deposit-kit-evidence'
-export const MANIFEST_VERSION = 1
+/** 2 added rental cars (kind, car, phase, slot). Version 1 files are homes and still restore. */
+export const MANIFEST_VERSION = 2
 
 export interface ManifestPhoto {
   /** Path of the original photo inside the zip. */
@@ -32,12 +34,23 @@ export interface ManifestPhoto {
   }
 }
 
+export interface ManifestRoom {
+  name: string
+  /** Car records: which visit and which spot on the shot list. */
+  phase?: Phase
+  slot?: string
+  photos: ManifestPhoto[]
+}
+
 export interface Manifest {
   format: typeof MANIFEST_FORMAT
   version: typeof MANIFEST_VERSION
   generatedAt: string
+  kind: RecordKind
+  /** moveInDate is the pickup date for a car. */
   property: { label: string; moveInDate: string; state: string }
-  rooms: { name: string; photos: ManifestPhoto[] }[]
+  car?: CarDetails
+  rooms: ManifestRoom[]
   totals: { photos: number; timestamped: number }
   howToVerify: string[]
 }
@@ -94,8 +107,8 @@ export function buildManifest(
 ): { manifest: Manifest; entries: ExportEntry[] } {
   const entries: ExportEntry[] = []
   const usedDirs = new Set<string>()
-  const manifestRooms = rooms.map((room, ri) => {
-    let dir = `photos/${pad(ri + 1)}-${slug(room.name)}`
+  const manifestRooms = rooms.map((room, ri): ManifestRoom => {
+    let dir = `photos/${pad(ri + 1)}-${room.phase ? `${room.phase}-` : ''}${slug(room.name)}`
     while (usedDirs.has(dir)) dir += '-x'
     usedDirs.add(dir)
     const photos = (photosByRoom.get(room.id) ?? []).map((photo, pi): ManifestPhoto => {
@@ -115,7 +128,7 @@ export function buildManifest(
           : { status: 'not-yet-timestamped' },
       }
     })
-    return { name: room.name, photos }
+    return room.phase ? { name: room.name, phase: room.phase, slot: room.slot, photos } : { name: room.name, photos }
   })
   const all = manifestRooms.flatMap((r) => r.photos)
   return {
@@ -124,7 +137,9 @@ export function buildManifest(
       format: MANIFEST_FORMAT,
       version: MANIFEST_VERSION,
       generatedAt: generatedAt.toISOString(),
+      kind: property.kind ?? 'home',
       property: { label: property.label, moveInDate: property.moveInDate, state: property.state },
+      ...(property.kind === 'car' && property.car ? { car: property.car } : {}),
       rooms: manifestRooms,
       totals: { photos: all.length, timestamped: all.filter((p) => p.timestamp.status === 'stamped').length },
       howToVerify: HOW_TO_VERIFY,
@@ -133,13 +148,25 @@ export function buildManifest(
 }
 
 function readme(m: Manifest): string {
-  return [
-    'Deposit Kit move-in record',
-    '==========================',
+  const car = m.kind === 'car'
+  const c = m.car
+  const title = car ? 'Deposit Kit rental car record' : 'Deposit Kit move-in record'
+  const phases = [...new Set(m.rooms.map((r) => r.phase).filter(Boolean))] as Phase[]
+  const lines: (string | null)[] = [
+    title,
+    '='.repeat(title.length),
     '',
-    `Property: ${m.property.label}`,
-    `Move-in date: ${m.property.moveInDate}`,
-    m.property.state ? `State: ${m.property.state}` : '',
+    ...(car
+      ? [
+          `Car: ${m.property.label}`,
+          c?.company ? `Rental company: ${c.company}` : null,
+          c?.reservation ? `Reservation: ${c.reservation}` : null,
+          `Pickup date: ${m.property.moveInDate}`,
+          c?.pickupPlace ? `Picked up at: ${c.pickupPlace}` : null,
+          c?.returnPlace ? `Returned at: ${c.returnPlace}` : null,
+          `Photos taken at: ${phases.map((p) => PHASE_NAME[p].toLowerCase()).join(' and ') || 'pickup'}`,
+        ]
+      : [`Property: ${m.property.label}`, `Move-in date: ${m.property.moveInDate}`, m.property.state ? `State: ${m.property.state}` : null]),
     `Saved: ${m.generatedAt}`,
     `Photos: ${m.totals.photos} (${m.totals.timestamped} timestamped)`,
     '',
@@ -148,9 +175,11 @@ function readme(m: Manifest): string {
     '',
     'What is inside',
     '--------------',
-    'photos/        the original photos, exactly as taken, one folder per room',
+    car
+      ? 'photos/        the original photos, exactly as taken, one folder per visit and spot'
+      : 'photos/        the original photos, exactly as taken, one folder per room',
     '*.tsr          a signed timestamp for the photo with the same name',
-    'manifest.json  every photo with its room, note, fingerprint and timestamp time',
+    `manifest.json  every photo with its ${car ? 'visit, spot' : 'room'}, note, fingerprint and timestamp time`,
     'certificates/  FreeTSA certificates for checking the timestamps',
     '',
     'How to verify',
@@ -171,6 +200,9 @@ function readme(m: Manifest): string {
     'Deposit Kit gives you templates and deadlines, not legal advice.',
     '',
   ]
+  // Optional lines are null; drop them, then collapse double blank lines.
+  return lines
+    .filter((l): l is string => l !== null)
     .filter((l, i, a) => l !== '' || a[i - 1] !== '')
     .join('\n')
 }
@@ -209,5 +241,6 @@ export async function buildZip(manifest: Manifest, entries: ExportEntry[]): Prom
 
 export function exportBaseName(property: Property, date: Date): string {
   const d = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  if (property.kind === 'car') return `deposit-kit-rental-car-${slug(property.label) || 'car'}-${d}`
   return `deposit-kit-move-in-${slug(property.label) || 'home'}-${d}`
 }

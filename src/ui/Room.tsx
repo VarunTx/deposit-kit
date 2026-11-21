@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Session } from '../lib/session.ts'
 import type { Photo, Property, Room } from '../lib/types.ts'
 import { useObjectUrl } from './feedback.tsx'
-import { ArrowLeft, Camera, Check, Images, RoomIcon, ShieldCheck, Trash, Wifi } from './icons.tsx'
+import { ArrowLeft, Camera, Check, Images, RoomIcon, ShieldCheck, SlotIcon, Trash, Wifi } from './icons.tsx'
+import { PHASE_NAME, shotFor } from '../lib/car.ts'
 
 const TIPS = [
   'Stand in the doorway and take one wide photo of the whole room',
@@ -11,6 +12,41 @@ const TIPS = [
   'Appliances and fixtures, inside and out',
   'Get close to anything scratched, stained, chipped or broken, and add a note',
 ]
+
+/** Adds picked or dropped files to a room one at a time, with progress and plain error messages. */
+export function useAddPhotos(session: Session, onAdded?: () => void) {
+  const [busy, setBusy] = useState(0)
+  const [problem, setProblem] = useState<string | null>(null)
+  const add = async (room: Room, all: File[]): Promise<number> => {
+    const files = all.filter((f) => !f.type || f.type.startsWith('image/'))
+    const skipped = all.length - files.length
+    if (all.length === 0) return 0
+    setProblem(skipped ? `Skipped ${skipped} file${skipped === 1 ? '' : 's'} that ${skipped === 1 ? 'isn’t a photo' : 'aren’t photos'}.` : null)
+    if (files.length === 0) return 0
+    // Ask the browser not to clear our storage under pressure. Harmless if refused.
+    navigator.storage?.persist?.().catch(() => {})
+    setBusy((n) => n + files.length)
+    let added = 0
+    for (const file of files) {
+      try {
+        await session.addPhoto(room, file)
+        added++
+        onAdded?.()
+      } catch (e) {
+        const quota = e instanceof DOMException && e.name === 'QuotaExceededError'
+        setProblem(
+          quota
+            ? 'Your device is out of space for photos. Save your record now, then free up some space.'
+            : `Couldn’t add ${file.name || 'that file'}. Please choose a photo.`,
+        )
+      } finally {
+        setBusy((n) => n - 1)
+      }
+    }
+    return added
+  }
+  return { busy, problem, add }
+}
 
 export function RoomView({
   session,
@@ -33,8 +69,7 @@ export function RoomView({
 }) {
   const [room, setRoom] = useState<Room | null>(null)
   const [photos, setPhotos] = useState<Photo[]>([])
-  const [busy, setBusy] = useState(0)
-  const [problem, setProblem] = useState<string | null>(null)
+  const { busy, problem, add } = useAddPhotos(session, onPhotoAdded)
   const [dragging, setDragging] = useState(false)
   const dragDepth = useRef(0)
   const cameraRef = useRef<HTMLInputElement>(null)
@@ -59,34 +94,18 @@ export function RoomView({
   }
 
   const addFiles = async (all: File[]) => {
-    const files = all.filter((f) => !f.type || f.type.startsWith('image/'))
-    const skipped = all.length - files.length
-    if (!room || all.length === 0) return
-    setProblem(skipped ? `Skipped ${skipped} file${skipped === 1 ? '' : 's'} that ${skipped === 1 ? 'isn’t a photo' : 'aren’t photos'}.` : null)
-    if (files.length === 0) return
-    // Ask the browser not to clear our storage under pressure. Harmless if refused.
-    navigator.storage?.persist?.().catch(() => {})
-    setBusy((n) => n + files.length)
-    for (const file of files) {
-      try {
-        await session.addPhoto(room, file)
-        onPhotoAdded()
-      } catch (e) {
-        const quota = e instanceof DOMException && e.name === 'QuotaExceededError'
-        setProblem(
-          quota
-            ? 'Your device is out of space for photos. Save your record now, then free up some space.'
-            : `Couldn’t add ${file.name || 'that file'}. Please choose a photo.`,
-        )
-      } finally {
-        setBusy((n) => n - 1)
-      }
-    }
+    if (room) await add(room, all)
   }
 
   if (!room) return <div class="loading" aria-label="Loading" />
 
   const stamped = photos.filter((p) => p.stamp.status === 'stamped').length
+  // A spot on a rental car's shot list: fixed name, its own tip, can't be deleted.
+  const shot = room.slot ? shotFor(room.slot) : undefined
+  const isSpot = !!room.phase
+  const title = room.phase ? `${PHASE_NAME[room.phase]}: ${room.name}` : room.name
+  const tips = shot ? [shot.tip, 'Get close to anything scratched, dented or chipped, and add a note'] : TIPS
+  const notePlaceholder = room.slot === 'dashboard' ? 'e.g. 12,345 miles, full tank' : isSpot ? 'e.g. scratch on rear bumper' : 'e.g. scratch on floor by window'
 
   const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
 
@@ -125,14 +144,12 @@ export function RoomView({
         </div>
       )}
       <button class="back" onClick={onBack}>
-        <ArrowLeft size={18} /> All rooms
+        <ArrowLeft size={18} /> {isSpot ? 'Back to the car' : 'All rooms'}
       </button>
       <header class="room-head">
-        <span class="room-icon big done">
-          <RoomIcon name={room.name} size={28} />
-        </span>
+        <span class="room-icon big done">{isSpot ? <SlotIcon slot={room.slot} size={28} /> : <RoomIcon name={room.name} size={28} />}</span>
         <div>
-          <h1>{room.name}</h1>
+          <h1>{title}</h1>
           <p class="muted small">
             {photos.length === 0
               ? 'No photos yet'
@@ -144,7 +161,7 @@ export function RoomView({
       <details class="tips" open={photos.length === 0}>
         <summary>What to photograph</summary>
         <ul>
-          {TIPS.map((t) => (
+          {tips.map((t) => (
             <li key={t}>
               <Check size={16} /> {t}
             </li>
@@ -210,20 +227,21 @@ export function RoomView({
       ) : (
         <ul class="photo-list">
           {photos.map((p, i) => (
-            <PhotoCard key={p.id} photo={p} index={i + 1} session={session} />
+            <PhotoCard key={p.id} photo={p} index={i + 1} session={session} placeholder={notePlaceholder} />
           ))}
         </ul>
       )}
 
       <div class="room-actions">
         <button class="btn big" onClick={onBack}>
-          <Check size={20} /> Done with {room.name}
+          <Check size={20} /> {isSpot ? 'Done' : `Done with ${room.name}`}
         </button>
         {photos.length > 0 && (
           <button class="btn ghost" onClick={onSave}>
             <ShieldCheck size={18} /> Save my record now
           </button>
         )}
+        {!isSpot && (
         <button
           class="btn danger-ghost"
           onClick={async () => {
@@ -239,12 +257,13 @@ export function RoomView({
         >
           <Trash size={18} /> Delete this room
         </button>
+        )}
       </div>
     </div>
   )
 }
 
-function PhotoCard({ photo, index, session }: { photo: Photo; index: number; session: Session }) {
+function PhotoCard({ photo, index, session, placeholder }: { photo: Photo; index: number; session: Session; placeholder: string }) {
   const url = useObjectUrl(photo.display)
   const [note, setNote] = useState(photo.note)
   const timer = useRef<number | undefined>(undefined)
@@ -303,7 +322,7 @@ function PhotoCard({ photo, index, session }: { photo: Photo; index: number; ses
           <input
             type="text"
             maxLength={200}
-            placeholder="e.g. scratch on floor by window"
+            placeholder={placeholder}
             value={note}
             onInput={(e) => {
               const v = e.currentTarget.value
@@ -328,7 +347,7 @@ function PhotoCard({ photo, index, session }: { photo: Photo; index: number; ses
   )
 }
 
-function StampBadge({ photo, onRetry }: { photo: Photo; onRetry: () => void }) {
+export function StampBadge({ photo, onRetry }: { photo: Photo; onRetry: () => void }) {
   const s = photo.stamp
   if (s.status === 'stamped') {
     return (

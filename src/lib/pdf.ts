@@ -3,8 +3,10 @@
 // so it doesn't slow down the first load.
 
 import type { jsPDF as JsPdf } from 'jspdf'
-import { VERIFY_COMMAND_LINES, type ExportEntry, type Manifest } from './export.ts'
+import { VERIFY_COMMAND_LINES, type ExportEntry, type Manifest, type ManifestPhoto, type ManifestRoom } from './export.ts'
 import { stateName } from './states.ts'
+import { CAR_SHOTS } from './car.ts'
+import type { Phase } from './types.ts'
 
 const PAGE_W = 215.9 // US Letter, mm
 const PAGE_H = 279.4
@@ -125,6 +127,188 @@ class Layout {
   }
 }
 
+/** Shorten text with "..." so it fits in `width` mm with the current font. */
+function fit(doc: JsPdf, text: string, width: number): string {
+  if (doc.getTextWidth(text) <= width) return text
+  let t = text
+  while (t.length > 4 && doc.getTextWidth(t + '...') > width) t = t.slice(0, -1)
+  return t.trimEnd() + '...'
+}
+
+function carRows(m: Manifest): [string, string][] {
+  const c = m.car
+  const pickupPhotos = m.rooms.filter((r) => r.phase === 'pickup').reduce((n, r) => n + r.photos.length, 0)
+  const returnPhotos = m.rooms.filter((r) => r.phase === 'return').reduce((n, r) => n + r.photos.length, 0)
+  const hasReturn = m.rooms.some((r) => r.phase === 'return')
+  const rows: [string, string][] = []
+  if (c?.company) rows.push(['Rental company', c.company])
+  if (c?.vehicle) rows.push(['Car', c.vehicle])
+  if (c?.plate) rows.push(['License plate', c.plate])
+  if (c?.reservation) rows.push(['Reservation', c.reservation])
+  rows.push(['Picked up', [formatDate(m.property.moveInDate), c?.pickupPlace].filter(Boolean).join(', ')])
+  if (c?.returnPlace) rows.push(['Returned at', c.returnPlace])
+  rows.push(['Photos', hasReturn ? `${pickupPhotos} at pickup, ${returnPhotos} at return` : `${plural(pickupPhotos, 'photo')} at pickup; no return photos yet`])
+  return rows
+}
+
+interface CarSpot {
+  name: string
+  slot?: string
+  pickup: ManifestPhoto[]
+  ret: ManifestPhoto[]
+  hasReturn: boolean
+}
+
+/** Group a car manifest by spot, in shot-list order, pairing each spot's pickup and return photos. */
+export function carSpots(m: Manifest): CarSpot[] {
+  const hasReturn = m.rooms.some((r) => r.phase === 'return')
+  const key = (r: ManifestRoom) => r.slot ?? `name:${r.name}`
+  const spots = new Map<string, CarSpot>()
+  const order = (k: string) => {
+    const i = CAR_SHOTS.findIndex((s) => s.slot === k)
+    return i < 0 ? 999 : i
+  }
+  for (const r of m.rooms) {
+    const k = key(r)
+    const spot = spots.get(k) ?? { name: r.name, slot: r.slot, pickup: [], ret: [], hasReturn }
+    if (r.phase === 'return') spot.ret.push(...r.photos)
+    else spot.pickup.push(...r.photos)
+    spots.set(k, spot)
+  }
+  return [...spots.entries()]
+    .sort((a, b) => order(a[0]) - order(b[0]))
+    .map(([, s]) => s)
+    .filter((s) => s.pickup.length + s.ret.length > 0)
+}
+
+const PHASE_LABEL: Record<Phase, string> = { pickup: 'Pickup', return: 'Return' }
+
+/** Car pages: each spot with its pickup photos on the left and return photos on the right. */
+async function carPages(L: Layout, m: Manifest, byPath: Map<string, ExportEntry>) {
+  const doc = L.doc
+  const spots = carSpots(m)
+  const twoCol = spots.some((s) => s.hasReturn)
+  const GAP = 6
+  const colW = twoCol ? (W - GAP) / 2 : W
+  const IMG_MAX_H = twoCol ? 62 : 72
+  const numbers: Record<Phase, number> = { pickup: 0, return: 0 }
+
+  const imgSize = (p: ManifestPhoto) => {
+    const e = byPath.get(p.file)?.photo
+    if (e?.display && e.width && e.height) {
+      const scale = Math.min(colW / e.width, IMG_MAX_H / e.height)
+      return { w: e.width * scale, h: e.height * scale }
+    }
+    return { w: colW, h: 28 }
+  }
+  const captionLines = (p: ManifestPhoto, title: string): { title: string[]; stamp: string[]; mono: string[] } => {
+    L.font(10.5, 'bold')
+    const t = L.lines(title, colW)
+    L.font(9, 'normal')
+    const st = L.lines(
+      p.timestamp.status === 'stamped'
+        ? `Timestamped ${formatTime(p.timestamp.time)} by ${p.timestamp.provider}, serial ${p.timestamp.serialNumber}`
+        : `Not yet timestamped. Added to the app ${formatTime(p.addedAt)}.`,
+      colW,
+    )
+    const mono = twoCol
+      ? [`SHA-256 ${p.sha256.slice(0, 32)}`, `        ${p.sha256.slice(32)}`, `Photo   ${p.file}`]
+      : [`SHA-256  ${p.sha256}`, `Photo    ${p.file}`]
+    if (p.timestamp.file) mono.push(`${twoCol ? 'Proof   ' : 'Proof    '}${p.timestamp.file}`)
+    return { title: t, stamp: st, mono }
+  }
+  const blockHeight = (p: ManifestPhoto | undefined, title: string) => {
+    if (!p) return 16
+    const c = captionLines(p, title)
+    return imgSize(p).h + 3 + c.title.length * LINE_H(10.5) + 1 + c.stamp.length * LINE_H(9) + 1 + c.mono.length * 3.6 + 6
+  }
+  const drawBlock = async (p: ManifestPhoto | undefined, title: string, phase: Phase, x: number, top: number, slot?: string) => {
+    if (!p) {
+      const only = CAR_SHOTS.find((s) => s.slot === slot)?.phases
+      doc.setFillColor(...PANEL)
+      doc.roundedRect(x, top, colW, 12, 2, 2, 'F')
+      L.font(9.5, 'normal', MUTED)
+      const msg = only && !only.includes(phase) ? `Only photographed at ${only.map((x) => PHASE_LABEL[x].toLowerCase()).join(' and ')}.` : `No ${phase} photo of this spot.`
+      doc.text(msg, x + colW / 2, top + 7.2, { align: 'center' })
+      return
+    }
+    const entry = byPath.get(p.file)
+    const size = imgSize(p)
+    if (entry?.photo.display) {
+      doc.addImage(new Uint8Array(await entry.photo.display.arrayBuffer()), 'JPEG', x, top, size.w, size.h, undefined, 'NONE')
+      doc.setDrawColor(...LINE)
+      doc.rect(x, top, size.w, size.h)
+    } else {
+      doc.setFillColor(...PANEL)
+      doc.roundedRect(x, top, colW, size.h, 2, 2, 'F')
+      L.font(9, 'normal', MUTED)
+      doc.text('No preview. The original is in the zip.', x + colW / 2, top + size.h / 2 + 1, { align: 'center' })
+    }
+    let y = top + size.h + 3
+    const c = captionLines(p, title)
+    L.font(10.5, 'bold', INK)
+    for (const l of c.title) {
+      doc.text(l, x, y + LINE_H(10.5) * 0.78)
+      y += LINE_H(10.5)
+    }
+    y += 1
+    L.font(9, 'normal', p.timestamp.status === 'stamped' ? ACCENT : WARN)
+    for (const l of c.stamp) {
+      doc.text(l, x, y + LINE_H(9) * 0.78)
+      y += LINE_H(9)
+    }
+    y += 1
+    L.font(7.4, 'normal', MUTED, 'courier')
+    for (const l of c.mono) {
+      doc.text(fit(doc, pdfSafe(l), colW), x, y + 3)
+      y += 3.6
+    }
+  }
+
+  const labelH = twoCol ? 6 : 0
+  const rowOf = (spot: CarSpot, i: number) => {
+    const cells: [Phase, ManifestPhoto | undefined][] = twoCol
+      ? [
+          ['pickup', spot.pickup[i]],
+          ['return', spot.ret[i]],
+        ]
+      : [['pickup', spot.pickup[i]]]
+    const titles = cells.map(([ph, p]) => (p ? `${PHASE_LABEL[ph]} photo ${numbers[ph] + 1}${p.note ? `  -  ${p.note}` : ''}` : ''))
+    return { cells, titles, h: Math.max(...cells.map(([, p], j) => blockHeight(p, titles[j]))) }
+  }
+
+  L.newPage()
+  for (const spot of spots) {
+    // Keep the spot's heading on the same page as its first row of photos.
+    L.ensure(5 + LINE_H(16) + 3 + labelH + rowOf(spot, 0).h)
+    L.font(9, 'bold', ACCENT)
+    doc.text('SPOT', M, L.y + 3)
+    L.y += 5
+    L.para(spot.name, 16, { style: 'bold', after: 3 })
+    const rows = Math.max(spot.pickup.length, twoCol ? spot.ret.length : 0)
+    for (let i = 0; i < rows; i++) {
+      const { cells, titles, h } = rowOf(spot, i)
+      // Column labels sit above the first row of each spot (and again after a page break).
+      const fresh = L.y + labelH + h > BOTTOM
+      if (fresh) L.newPage()
+      if (twoCol && (i === 0 || fresh)) {
+        cells.forEach(([ph], j) => {
+          L.font(8.5, 'bold', MUTED)
+          doc.text(`${PHASE_LABEL[ph].toUpperCase()}${fresh && i > 0 ? `  (${pdfSafe(spot.name)}, continued)` : ''}`, M + j * (colW + GAP), L.y + 3)
+        })
+        L.y += labelH
+      }
+      const top = L.y
+      for (const [j, [ph, p]] of cells.entries()) {
+        if (p) numbers[ph]++
+        await drawBlock(p, titles[j], ph, M + j * (colW + GAP), top, spot.slot)
+      }
+      L.y = top + h
+    }
+    L.y += 4
+  }
+}
+
 /** Load jsPDF ahead of time. Once loaded it stays in memory for this page. */
 export function preloadPdf(): Promise<unknown> {
   return import('jspdf')
@@ -133,7 +317,11 @@ export function preloadPdf(): Promise<unknown> {
 export async function buildPdf(manifest: Manifest, entries: ExportEntry[]): Promise<Blob> {
   const { jsPDF } = await import('jspdf')
   const doc: JsPdf = new jsPDF({ unit: 'mm', format: 'letter', compress: true })
-  doc.setProperties({ title: `Move-in condition report - ${pdfSafe(manifest.property.label)}`, creator: 'Deposit Kit' })
+  const isCar = manifest.kind === 'car'
+  doc.setProperties({
+    title: `${isCar ? 'Rental car condition report' : 'Move-in condition report'} - ${pdfSafe(manifest.property.label)}`,
+    creator: 'Deposit Kit',
+  })
   const L = new Layout(doc)
   const byPath = new Map(entries.map((e) => [e.path, e]))
   const { totals } = manifest
@@ -141,18 +329,19 @@ export async function buildPdf(manifest: Manifest, entries: ExportEntry[]): Prom
 
   // ---------- Cover ----------
   L.font(9, 'bold', ACCENT)
-  doc.text('MOVE-IN CONDITION REPORT', M, L.y + 3)
+  doc.text(isCar ? 'RENTAL CAR CONDITION REPORT' : 'MOVE-IN CONDITION REPORT', M, L.y + 3)
   L.y += 8
   L.para(manifest.property.label, 22, { style: 'bold', after: 5 })
 
   // Summary panel
-  const rows: [string, string][] = [
-    ['Move-in date', formatDate(manifest.property.moveInDate)],
-    ...(manifest.property.state ? ([['State', stateName(manifest.property.state)]] as [string, string][]) : []),
-    ['Photos', `${plural(totals.photos, 'photo')} in ${plural(manifest.rooms.length, 'room')}`],
-    ['Timestamps', `${totals.timestamped} of ${totals.photos} photos have a signed timestamp`],
-    ['Report saved', formatTime(manifest.generatedAt)],
-  ]
+  const rows: [string, string][] = isCar
+    ? carRows(manifest)
+    : [
+        ['Move-in date', formatDate(manifest.property.moveInDate)],
+        ...(manifest.property.state ? ([['State', stateName(manifest.property.state)]] as [string, string][]) : []),
+        ['Photos', `${plural(totals.photos, 'photo')} in ${plural(manifest.rooms.length, 'room')}`],
+      ]
+  rows.push(['Timestamps', `${totals.timestamped} of ${totals.photos} photos have a signed timestamp`], ['Report saved', formatTime(manifest.generatedAt)])
   const rowH = 7
   const panelH = rows.length * rowH + 6
   doc.setFillColor(...PANEL)
@@ -162,7 +351,7 @@ export async function buildPdf(manifest: Manifest, entries: ExportEntry[]): Prom
     L.font(9.5, 'normal', MUTED)
     doc.text(k, M + 5, ry + 4.6)
     L.font(10.5, 'bold', INK)
-    doc.text(pdfSafe(v), M + 42, ry + 4.6)
+    doc.text(fit(doc, pdfSafe(v), W - 47), M + 42, ry + 4.6)
     ry += rowH
   }
   L.y += panelH + 5
@@ -181,20 +370,26 @@ export async function buildPdf(manifest: Manifest, entries: ExportEntry[]): Prom
 
   L.heading('What this report shows', 13)
   L.para(
-    'These photos record the condition of the home at move-in. Each photo has a SHA-256 fingerprint, a code that changes if even one pixel of the photo changes. A public timestamp service (FreeTSA) signed each fingerprint, which shows the photo existed at the time listed. The photos were never uploaded; only their fingerprints were sent.',
+    (isCar
+      ? 'These photos record the condition of the rental car, spot by spot, when it was picked up and when it was returned. Pickup and return photos of the same spot are shown side by side.'
+      : 'These photos record the condition of the home at move-in.') +
+      ' Each photo has a SHA-256 fingerprint, a code that changes if even one pixel of the photo changes. A public timestamp service (FreeTSA) signed each fingerprint, which shows the photo existed at the time listed. The photos were never uploaded; only their fingerprints were sent.',
     10.5,
     { color: INK, after: 6 },
   )
 
   // Contents
-  L.heading('Rooms in this report', 13)
-  L.ensure(8 * Math.min(manifest.rooms.length, 3))
-  for (const room of manifest.rooms) {
+  const contents: [string, string][] = isCar
+    ? carSpots(manifest).map((s) => [s.name, s.hasReturn ? `${s.pickup.length} at pickup · ${s.ret.length} at return` : plural(s.pickup.length, 'photo')])
+    : manifest.rooms.map((r) => [r.name, plural(r.photos.length, 'photo')])
+  L.heading(isCar ? 'Spots in this report' : 'Rooms in this report', 13)
+  L.ensure(8 * Math.min(contents.length, 3))
+  for (const [name, count] of contents) {
     L.ensure(7)
     L.font(10.5, 'normal', INK)
-    doc.text(pdfSafe(room.name), M, L.y + 4)
+    doc.text(pdfSafe(name), M, L.y + 4)
     L.font(10, 'normal', MUTED)
-    doc.text(plural(room.photos.length, 'photo'), PAGE_W - M, L.y + 4, { align: 'right' })
+    doc.text(pdfSafe(count), PAGE_W - M, L.y + 4, { align: 'right' })
     doc.setDrawColor(...LINE)
     doc.line(M, L.y + 6.3, PAGE_W - M, L.y + 6.3)
     L.y += 8
@@ -230,11 +425,12 @@ export async function buildPdf(manifest: Manifest, entries: ExportEntry[]): Prom
   )
 
 
-  // ---------- Rooms ----------
+  // ---------- Rooms (or car spots) ----------
+  if (isCar) await carPages(L, manifest, byPath)
   let photoNo = 0
   const IMG_MAX_H = 72
   const CAPTION_H = 30
-  for (const room of manifest.rooms) {
+  for (const room of isCar ? [] : manifest.rooms) {
     L.newPage()
     L.font(9, 'bold', ACCENT)
     doc.text('ROOM', M, L.y + 3)

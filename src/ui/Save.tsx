@@ -120,7 +120,9 @@ export function SaveView({ session, property, onBack }: { session: Session; prop
         <h1>{done ? 'Your record is saved' : 'Save your record'}</h1>
         <p>
           {done
-            ? 'Keep both files until your deposit is back. Emailing them to yourself is an easy way to keep a copy.'
+            ? property.kind === 'car'
+              ? 'Keep both files for a few months after the rental. Damage charges can arrive weeks later. Emailing them to yourself is an easy way to keep a copy.'
+              : 'Keep both files until your deposit is back. Emailing them to yourself is an easy way to keep a copy.'
             : 'These two files are your proof. Save them to Files, iCloud Drive, Google Drive or your computer, or email them to yourself.'}
         </p>
       </section>

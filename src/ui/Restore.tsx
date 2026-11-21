@@ -4,21 +4,15 @@ import { RestoreError, type RestoreReport } from '../lib/restore.ts'
 import { toast } from './feedback.tsx'
 import { Archive } from './icons.tsx'
 
-/**
- * "Restore from a saved zip". The file is picked first, then (if a record already
- * exists) the user confirms before anything on the device is replaced.
- */
+/** "Restore from a saved zip". The restored record is added next to any already on this device; nothing is replaced. */
 export function RestoreButton({
   session,
-  existingPhotos,
-  unsaved,
   variant,
+  onRestored,
 }: {
   session: Session
-  /** Photos currently on this device; 0 when there's no record yet. */
-  existingPhotos: number
-  unsaved: boolean
   variant: 'intro' | 'home'
+  onRestored?: (propertyId: string) => void
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<string | null>(null)
@@ -31,20 +25,24 @@ export function RestoreButton({
     if (!file) return
     setError(null)
     setResult(null)
-    if (existingPhotos > 0) {
-      const warning = unsaved
-        ? `This replaces the record on this device, including ${existingPhotos} photo${existingPhotos === 1 ? '' : 's'} that aren’t in a saved file yet. They will be lost. Replace it?`
-        : `This replaces the record on this device (${existingPhotos} photo${existingPhotos === 1 ? '' : 's'}) with the one in this file. Replace it?`
-      if (!confirm(warning)) return
-    }
     setProgress('Opening your file…')
     try {
       const report = await session.restore(file, (done, total) => setProgress(`Restoring photo ${done} of ${total}…`))
       setResult(report)
-      toast(`Restored ${report.photos} photo${report.photos === 1 ? '' : 's'} in ${report.rooms} room${report.rooms === 1 ? '' : 's'}`)
+      toast(`Restored ${report.photos} photo${report.photos === 1 ? '' : 's'}`)
+      if (report.needStamp > 0 || report.missing > 0) {
+        toast(
+          report.missing > 0
+            ? `${report.missing} photo${report.missing === 1 ? ' was' : 's were'} missing from the file.`
+            : `${report.needStamp} photo${report.needStamp === 1 ? '' : 's'} will get a new timestamp with today’s time.`,
+          'warn',
+          6000,
+        )
+      }
+      onRestored?.(report.propertyId)
     } catch (e) {
       console.error(e)
-      setError(e instanceof RestoreError ? e.message : 'Something went wrong while restoring. Your current record wasn’t changed.')
+      setError(e instanceof RestoreError ? e.message : 'Something went wrong while restoring. Nothing on this device was changed.')
     } finally {
       setProgress(null)
     }

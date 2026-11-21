@@ -1,8 +1,28 @@
+export type RecordKind = 'home' | 'car'
+
+/** Pickup and return for a rental car. Homes have no phase (move-in only for now). */
+export type Phase = 'pickup' | 'return'
+
+export interface CarDetails {
+  company: string
+  /** Free text, e.g. "White Toyota Camry". */
+  vehicle: string
+  plate: string
+  /** Reservation or rental agreement number. */
+  reservation: string
+  pickupPlace: string
+  returnPlace: string
+}
+
+/** One record: a rented home or a rented car. (Stored as "properties" for older versions of the app.) */
 export interface Property {
   id: string
-  /** Free text the user picks, e.g. "Apt 4B, 120 Main St". Stays on the device. */
+  /** Absent on records made before rental cars existed, which are all homes. */
+  kind?: RecordKind
+  car?: CarDetails
+  /** Home: free text the user picks, e.g. "Apt 4B, 120 Main St". Car: made from the vehicle and plate. Stays on the device. */
   label: string
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD. Home: move-in date. Car: pickup date. */
   moveInDate: string
   /** Two-letter US state code, or '' if not chosen. */
   state: string
@@ -19,6 +39,9 @@ export interface Room {
   name: string
   order: number
   createdAt: string
+  /** Car records only: which visit, and which spot on the shot list. */
+  phase?: Phase
+  slot?: string
 }
 
 export type StampStatus = 'pending' | 'stamped' | 'failed'

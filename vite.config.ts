@@ -59,7 +59,7 @@ export default defineConfig(({ mode }) => {
         lang: 'en-US',
         categories: ['productivity', 'utilities', 'lifestyle'],
         short_name: 'Deposit Kit',
-        description: 'Prove your rental’s condition and get your security deposit back. Free, and your photos stay on your phone.',
+        description: 'Prove what your rental home or rental car looked like, with timestamped photos. Free, and your photos stay on your phone.',
         theme_color: '#0f766e',
         background_color: '#f4f7f6',
         display: 'standalone',

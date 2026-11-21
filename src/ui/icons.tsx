@@ -163,6 +163,76 @@ export const Box = (p: P) => (
   </Svg>
 )
 
+// Car icons
+export const Car = (p: P) => (
+  <Svg {...p}>
+    <path d="M5 16H3v-4l2-5a2 2 0 012-1.4h10A2 2 0 0119 7l2 5v4h-2" />
+    <path d="M3 12h18M9 16h6" />
+    <circle cx="7" cy="16.5" r="2" />
+    <circle cx="17" cy="16.5" r="2" />
+  </Svg>
+)
+export const Wheel = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 3v6M12 15v6M3 12h6M15 12h6" />
+  </Svg>
+)
+export const Gauge = (p: P) => (
+  <Svg {...p}>
+    <path d="M4.5 18a9 9 0 1115 0" />
+    <path d="M12 13l4-4" />
+    <circle cx="12" cy="13" r="1.2" />
+  </Svg>
+)
+export const Seat = (p: P) => (
+  <Svg {...p}>
+    <path d="M8 3h4a2 2 0 012 2l-1 9H7L6 5a2 2 0 012-2z" />
+    <path d="M5 14h12a2 2 0 012 2v2H5zM7 18v3M17 18v3" />
+  </Svg>
+)
+export const Key = (p: P) => (
+  <Svg {...p}>
+    <circle cx="8" cy="15" r="4" />
+    <path d="M11 12l9-9M16 7l3 3M14 9l2 2" />
+  </Svg>
+)
+export const Windshield = (p: P) => (
+  <Svg {...p}>
+    <path d="M4 17l2-9a2 2 0 012-1.6h8A2 2 0 0118 8l2 9z" />
+    <path d="M9 10l-1 3M14 9l2 2" />
+  </Svg>
+)
+export const Search = (p: P) => (
+  <Svg {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M20 20l-4-4" />
+  </Svg>
+)
+
+/** Icon for a car shot-list spot. */
+export function SlotIcon({ slot, ...p }: P & { slot: string | undefined }) {
+  switch (slot) {
+    case 'wheels':
+      return <Wheel {...p} />
+    case 'dashboard':
+      return <Gauge {...p} />
+    case 'interior':
+      return <Seat {...p} />
+    case 'dropoff':
+      return <Key {...p} />
+    case 'glass':
+      return <Windshield {...p} />
+    case 'damage':
+      return <Search {...p} />
+    case 'trunk':
+      return <Box {...p} />
+    default:
+      return <Car {...p} />
+  }
+}
+
 export function RoomIcon({ name, ...p }: P & { name: string }) {
   const n = name.toLowerCase()
   if (/kitchen|pantry/.test(n)) return <Kitchen {...p} />

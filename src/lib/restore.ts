@@ -9,7 +9,8 @@ import { newId } from './db.ts'
 import { sha256Hex } from './hash.ts'
 import type { DisplayImage } from './image.ts'
 import { checkTimeStampResponse } from './tsp.ts'
-import type { Photo, PhotoStamp, Property, Room } from './types.ts'
+import { cleanCar, shotFor, slotOrder } from './car.ts'
+import type { Phase, Photo, PhotoStamp, Property, Room } from './types.ts'
 
 export class RestoreError extends Error {}
 
@@ -84,9 +85,12 @@ export async function readBackup(bytes: Uint8Array, deps: RestoreDeps): Promise<
 
   const now = (deps.now ?? (() => new Date()))()
   const savedAt = typeof manifest.generatedAt === 'string' ? manifest.generatedAt : now.toISOString()
+  const car = manifest.kind === 'car'
   const property: Property = {
     id: newId(),
-    label: String(manifest.property.label ?? 'My home').slice(0, 120),
+    kind: car ? 'car' : 'home',
+    ...(car ? { car: cleanCar(manifest.car) } : {}),
+    label: String(manifest.property.label ?? (car ? 'Rental car' : 'My home')).slice(0, 120),
     moveInDate: String(manifest.property.moveInDate ?? ''),
     state: String(manifest.property.state ?? ''),
     createdAt: now.toISOString(),
@@ -103,6 +107,15 @@ export async function readBackup(bytes: Uint8Array, deps: RestoreDeps): Promise<
 
   for (const [i, mr] of manifest.rooms.entries()) {
     const room: Room = { id: newId(), propertyId: property.id, name: String(mr.name ?? `Room ${i + 1}`).slice(0, 40), order: i + 1, createdAt: now.toISOString() }
+    // Car spots keep their visit and shot-list place, so the comparison still lines up.
+    const phase: Phase | undefined = mr.phase === 'pickup' || mr.phase === 'return' ? mr.phase : undefined
+    if (car && phase) {
+      room.phase = phase
+      if (typeof mr.slot === 'string' && shotFor(mr.slot)) {
+        room.slot = mr.slot
+        room.order = slotOrder(phase, mr.slot)
+      } else room.order = slotOrder(phase, '') + i
+    }
     rooms.push(room)
     for (const mp of (Array.isArray(mr.photos) ? mr.photos : []) as ManifestPhoto[]) {
       deps.onProgress?.(++done, total)
@@ -136,7 +149,7 @@ export async function readBackup(bytes: Uint8Array, deps: RestoreDeps): Promise<
     }
   }
   report.rooms = rooms.length
-  if (rooms.length === 0) throw new RestoreError('This zip has no rooms in it.')
+  if (rooms.length === 0) throw new RestoreError(car ? 'This zip has no photos of the car in it.' : 'This zip has no rooms in it.')
   // If any photo needs a timestamp, the restored record isn't fully saved yet.
   if (report.needStamp > 0 || report.missing > 0) property.lastChangeAt = now.toISOString()
   return { property, rooms, photos, report }

@@ -37,5 +37,10 @@ Live at **https://depositkit.varuntx.us**, set up like the portfolio:
 ## Every later release
 Push to `main`. Dokploy rebuilds and swaps the container (the old one keeps serving until the new one passes its health check). Open copies of the app pick up the update on their next load; if someone is mid-save at that moment, the app shows "Deposit Kit just updated. Reload".
 
+## Rental cars (added 2026-11-21)
+A device can now hold several records: homes and rental cars. A car record has a guided shot list at pickup and again at return, and the PDF shows each spot's pickup and return photos side by side. Restoring a zip adds a record instead of replacing what's on the device.
+- [x] Tested in the browser: car setup, guided shots, return with the pickup photo shown for each spot, save, PDF and zip; a home record next to it.
+- [ ] On a phone at a real rental counter: is the guided flow fast enough, and are the camera photos readable in a dark garage?
+
 ## Not built yet
-Move-out comparison, state rules, the demand letter and reminders (see `docs/spec.md`). v1 launches as move-in only.
+Move-out comparison for homes, state rules, the demand letter and reminders (see `docs/spec.md`). Homes are move-in only for now.
